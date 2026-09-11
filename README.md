@@ -48,6 +48,22 @@ then set the amount and currency. The CHIP panel adds:
 - **Email**, **First name**, **Last name**, **Address** — map these to form
   fields so the payer's details reach CHIP.
 - **Reference** — an optional invoice reference. Defaults to the entry ID.
+- **Methods offered on this form** — override the global payment method setting
+  for this form only. See below.
+
+### Payment method override per form
+
+The **Methods offered on this form** dropdown controls which methods appear at
+checkout for this form:
+
+| Option | Behaviour |
+|---|---|
+| Use the global settings | Follows the global payment method setting. This is the default. |
+| Every method enabled for the brand | Ignores the global setting and offers everything your brand has enabled. |
+| Choose methods for this form | Use the checkbox list to pick methods for this form only. |
+
+Selecting no checkboxes under **Choose methods for this form** is the same as
+choosing *Every method enabled for the brand*.
 
 ## How payments work
 
@@ -78,6 +94,9 @@ actually has:
 | DuitNow QR | `duitnow_qr`, `dnqr` |
 | ShopeePay | `shopee_pay`, `razer_shopeepay` |
 | Card (Visa, Mastercard, Maestro) | `visa`, `mastercard`, `maestro` |
+
+The method list can be set globally, or overridden per form on the payment
+action. See **Payment method override per form** above.
 
 ### Recurring payments
 

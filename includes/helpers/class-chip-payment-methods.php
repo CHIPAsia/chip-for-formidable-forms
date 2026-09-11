@@ -57,6 +57,11 @@ class FrmChipPaymentMethods {
 	 * by the shared CHIP API spec. Group entries are single keys that expand at
 	 * runtime.
 	 *
+	 * The DuitNow QR group is exposed as the single `duitnow_qr` choice, matching
+	 * the other CHIP plugins: a merchant picks "DuitNow QR" and the group is
+	 * resolved to whichever identifier their brand actually has. Listing `dnqr`
+	 * as well would give two checkboxes for one method with identical behaviour.
+	 *
 	 * @return array<string, string>
 	 */
 	public static function get_options() {
@@ -65,7 +70,6 @@ class FrmChipPaymentMethods {
 			'fpx_b2b1'        => __( 'FPX B2B1', 'chip-for-formidable-forms' ),
 			'card'            => __( 'Card (Visa, Mastercard, Maestro)', 'chip-for-formidable-forms' ),
 			'duitnow_qr'      => __( 'DuitNow QR', 'chip-for-formidable-forms' ),
-			'dnqr'            => __( 'DuitNow QR (DuitNow)', 'chip-for-formidable-forms' ),
 			'shopee_pay'      => __( 'ShopeePay', 'chip-for-formidable-forms' ),
 			'razer_grabpay'   => __( 'GrabPay', 'chip-for-formidable-forms' ),
 			'razer_atome'     => __( 'Atome', 'chip-for-formidable-forms' ),
@@ -74,6 +78,30 @@ class FrmChipPaymentMethods {
 			'mpgs_apple_pay'  => __( 'Apple Pay', 'chip-for-formidable-forms' ),
 			'mpgs_google_pay' => __( 'Google Pay', 'chip-for-formidable-forms' ),
 			'crypto_coin'     => __( 'Crypto Coin', 'chip-for-formidable-forms' ),
+		);
+	}
+
+	/**
+	 * Sanitise a submitted payment method selection against the known options.
+	 *
+	 * Shared by the global settings form and the per-form override so both accept
+	 * exactly the same values.
+	 *
+	 * @param mixed $values Submitted values, expected to be an array of keys.
+	 * @return array
+	 */
+	public static function sanitize_selection( $values ) {
+		$allowed = array_keys( self::get_options() );
+
+		if ( ! is_array( $values ) ) {
+			return array();
+		}
+
+		return array_values(
+			array_intersect(
+				array_map( 'sanitize_text_field', array_map( 'wp_unslash', $values ) ),
+				$allowed
+			)
 		);
 	}
 

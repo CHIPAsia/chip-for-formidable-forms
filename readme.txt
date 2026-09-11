@@ -22,7 +22,7 @@ checkout.
 * Appears as a gateway on the Collect a Payment action, alongside Stripe, Square
   and PayPal
 * One-time and recurring payments
-* Choose which payment methods to offer
+* Choose which payment methods to offer, globally or per form
 * Refunds from the Formidable payments screen
 * Payment status triggers so emails can run on a successful or failed payment
 
@@ -56,6 +56,12 @@ https://www.chip-in.asia.
 = Which currency is supported? =
 
 MYR. CHIP settles Malaysian merchants in Malaysian Ringgit.
+
+= Can I offer different payment methods on different forms? =
+
+Yes. Each payment action has a "Methods offered on this form" dropdown that can
+follow the global setting, offer every method your brand has enabled, or pick a
+specific set for that form.
 
 = Are recurring payments automatic? =
 

@@ -35,7 +35,17 @@ $frm_chip_text_field = function ( $name, $label, $value ) use ( $action_control,
 };
 ?>
 
-<div class="frm_trans_sub_opts frm_grid_container show_chip<?php echo $is_recurring ? '' : ' frm_hidden'; ?>">
+<?php
+$frm_chip_panel_classes = 'frm_chip_action_panel frm_grid_container show_chip';
+
+ob_start();
+FrmTransLitePaymentsController::maybe_hide_payment_setting(
+	FrmChipHooksController::GATEWAY,
+	$form_action->post_content['gateway']
+);
+$frm_chip_panel_classes .= ob_get_clean();
+?>
+<div class="<?php echo esc_attr( $frm_chip_panel_classes ); ?>">
 	<div class="frm_grid_container">
 		<h3><?php esc_html_e( 'CHIP', 'chip-for-formidable-forms' ); ?></h3>
 
@@ -121,5 +131,58 @@ $frm_chip_text_field = function ( $name, $label, $value ) use ( $action_control,
 				?>
 			</p>
 		<?php } ?>
+	</div>
+
+	<?php
+	$frm_chip_mode     = $settings->get_action_override( $form_action );
+	$frm_chip_selected = $settings->get_action_whitelist( $form_action );
+	$frm_chip_choices  = FrmChipPaymentMethods::get_options();
+	?>
+	<div class="frm_grid_container show_chip">
+		<h3><?php esc_html_e( 'Payment Methods', 'chip-for-formidable-forms' ); ?></h3>
+
+		<p class="frm6">
+			<label for="<?php echo esc_attr( $action_control->get_field_id( 'chip_payment_methods' ) ); ?>">
+				<?php esc_html_e( 'Methods offered on this form', 'chip-for-formidable-forms' ); ?>
+			</label>
+			<select name="<?php echo esc_attr( $action_control->get_field_name( 'chip_payment_methods' ) ); ?>"
+				id="<?php echo esc_attr( $action_control->get_field_id( 'chip_payment_methods' ) ); ?>"
+				class="frm_chip_payment_methods">
+				<option value="global" <?php selected( 'global', $frm_chip_mode ); ?>>
+					<?php esc_html_e( 'Use the global settings', 'chip-for-formidable-forms' ); ?>
+				</option>
+				<option value="all" <?php selected( 'all', $frm_chip_mode ); ?>>
+					<?php esc_html_e( 'Every method enabled for the brand', 'chip-for-formidable-forms' ); ?>
+				</option>
+				<option value="custom" <?php selected( 'custom', $frm_chip_mode ); ?>>
+					<?php esc_html_e( 'Choose methods for this form', 'chip-for-formidable-forms' ); ?>
+				</option>
+			</select>
+		</p>
+
+		<?php $frm_chip_block_classes = 'frm_chip_whitelist_block frm_grid_container'; ?>
+		<?php $frm_chip_block_classes .= 'custom' === $frm_chip_mode ? '' : ' frm_hidden'; ?>
+		<div class="<?php echo esc_attr( $frm_chip_block_classes ); ?>">
+			<p>
+				<?php foreach ( $frm_chip_choices as $frm_chip_key => $frm_chip_label ) { ?>
+					<label class="frm_inline_label">
+						<input type="checkbox"
+							name="<?php echo esc_attr( $action_control->get_field_name( 'chip_whitelist' ) ); ?>[]"
+							value="<?php echo esc_attr( $frm_chip_key ); ?>"
+							<?php checked( in_array( $frm_chip_key, $frm_chip_selected, true ) ); ?> />
+						<?php echo esc_html( $frm_chip_label ); ?>
+					</label>
+				<?php } ?>
+			</p>
+
+			<p class="frm_sub_label">
+				<?php
+				esc_html_e(
+					'Selecting nothing offers every method, the same as the option above.',
+					'chip-for-formidable-forms'
+				);
+				?>
+			</p>
+		</div>
 	</div>
 </div>

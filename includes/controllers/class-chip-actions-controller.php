@@ -72,6 +72,12 @@ class FrmChipActionsController {
 			$settings[ $key ] = isset( $settings[ $key ] ) ? absint( $settings[ $key ] ) : 0;
 		}
 
+		$settings['chip_payment_methods'] = self::sanitize_payment_method_mode( $settings );
+
+		$settings['chip_whitelist'] = FrmChipPaymentMethods::sanitize_selection(
+			isset( $settings['chip_whitelist'] ) ? $settings['chip_whitelist'] : array()
+		);
+
 		if ( isset( $settings['chip_product_name'] ) ) {
 			$settings['chip_product_name'] = sanitize_text_field( $settings['chip_product_name'] );
 		}
@@ -382,7 +388,7 @@ class FrmChipActionsController {
 			$params['client']['street_address'] = FrmChipHelper::truncate( $address, 128 );
 		}
 
-		$whitelist = self::resolve_whitelist( $settings, $amount, $is_recurring );
+		$whitelist = self::resolve_whitelist( $settings, $amount, $is_recurring, $action );
 
 		if ( $whitelist ) {
 			$params['payment_method_whitelist'] = $whitelist;
@@ -420,15 +426,33 @@ class FrmChipActionsController {
 	}
 
 	/**
+	 * Normalise the per-form payment method mode.
+	 *
+	 * An unrecognised or absent value means "use the global settings", which is
+	 * what every action saved before this setting existed will have.
+	 *
+	 * @param array $settings Action settings being saved.
+	 * @return string global|all|custom
+	 */
+	private static function sanitize_payment_method_mode( array $settings ) {
+		$mode = isset( $settings['chip_payment_methods'] )
+			? sanitize_text_field( $settings['chip_payment_methods'] )
+			: '';
+
+		return in_array( $mode, array( 'all', 'custom' ), true ) ? $mode : 'global';
+	}
+
+	/**
 	 * Resolve the configured whitelist against the merchant's available methods.
 	 *
 	 * @param FrmChipSettings $settings     Plugin settings.
 	 * @param int             $amount       Amount in minor units.
 	 * @param bool            $is_recurring Whether this is a recurring payment.
+	 * @param object|null     $action       Payment action, for a per-form override.
 	 * @return array
 	 */
-	private static function resolve_whitelist( $settings, $amount, $is_recurring ) {
-		$configured = $settings->get_whitelist();
+	private static function resolve_whitelist( $settings, $amount, $is_recurring, $action = null ) {
+		$configured = $settings->get_whitelist( $action );
 
 		if ( ! $configured ) {
 			return array();

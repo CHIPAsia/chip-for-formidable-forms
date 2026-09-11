@@ -139,9 +139,42 @@ class FrmChipSettings {
 	 *
 	 * An empty whitelist means "let CHIP decide", which is the default.
 	 *
+	 * @param object|null $action Optional payment action, for a per-form override.
 	 * @return array
 	 */
-	public function get_whitelist() {
+	public function get_whitelist( $action = null ) {
+		$configured = $this->get_configured_whitelist( $action );
+
+		if ( ! $configured ) {
+			return array();
+		}
+
+		return FrmChipPaymentMethods::expand_groups( $configured );
+	}
+
+	/**
+	 * Get the raw configured selection, before group expansion.
+	 *
+	 * Resolution order:
+	 *
+	 * 1. A per-form override with methods selected wins outright.
+	 * 2. A per-form override set to "all methods" clears the whitelist entirely.
+	 * 3. Otherwise the global setting applies.
+	 *
+	 * @param object|null $action Optional payment action carrying the override.
+	 * @return array
+	 */
+	public function get_configured_whitelist( $action = null ) {
+		$override = $this->get_action_override( $action );
+
+		if ( 'custom' === $override ) {
+			return $this->get_action_whitelist( $action );
+		}
+
+		if ( 'all' === $override ) {
+			return array();
+		}
+
 		if ( ! $this->get( 'whitelist_enabled' ) ) {
 			return array();
 		}
@@ -152,7 +185,54 @@ class FrmChipSettings {
 			return array();
 		}
 
-		return FrmChipPaymentMethods::expand_groups( $configured );
+		return $configured;
+	}
+
+	/**
+	 * Read the per-form payment method mode from a payment action.
+	 *
+	 * @param object|null $action Payment action.
+	 * @return string all|custom|global
+	 */
+	public function get_action_override( $action = null ) {
+		$mode = $this->get_action_setting( $action, 'chip_payment_methods' );
+
+		if ( ! in_array( $mode, array( 'all', 'custom' ), true ) ) {
+			return 'global';
+		}
+
+		return $mode;
+	}
+
+	/**
+	 * Read the per-form payment method selection from a payment action.
+	 *
+	 * @param object|null $action Payment action.
+	 * @return array
+	 */
+	public function get_action_whitelist( $action = null ) {
+		$selected = $this->get_action_setting( $action, 'chip_whitelist' );
+
+		if ( ! is_array( $selected ) || ! $selected ) {
+			return array();
+		}
+
+		return FrmChipPaymentMethods::sanitize_selection( $selected );
+	}
+
+	/**
+	 * Read a single value from a payment action's post_content.
+	 *
+	 * @param object|null $action Payment action.
+	 * @param string      $key    Setting name.
+	 * @return mixed
+	 */
+	private function get_action_setting( $action, $key ) {
+		if ( ! is_object( $action ) || ! isset( $action->post_content[ $key ] ) ) {
+			return null;
+		}
+
+		return $action->post_content[ $key ];
 	}
 
 	/**
@@ -184,14 +264,8 @@ class FrmChipSettings {
 		$this->settings->due_strict_timing = $timing > 0 ? $timing : 60;
 
 		$whitelist = isset( $params['frm_chip_whitelist'] ) ? (array) $params['frm_chip_whitelist'] : array();
-		$allowed   = array_keys( FrmChipPaymentMethods::get_options() );
 
-		$this->settings->whitelist = array_values(
-			array_intersect(
-				array_map( 'sanitize_text_field', array_map( 'wp_unslash', $whitelist ) ),
-				$allowed
-			)
-		);
+		$this->settings->whitelist = FrmChipPaymentMethods::sanitize_selection( $whitelist );
 	}
 
 	/**
