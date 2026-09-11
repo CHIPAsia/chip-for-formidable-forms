@@ -164,6 +164,7 @@ This plugin communicates with the following CHIP API endpoints:
 * First release.
 * CHIP registered as a payment gateway for Formidable Forms, alongside Stripe, Square and PayPal.
 * One-time and recurring payments through the CHIP hosted checkout.
+* Recurring payments are charged from the site on a schedule, with retries on days 3, 5 and 7 after a failed attempt.
 * Payment method selection, globally and per form, with runtime resolution of the DuitNow QR and ShopeePay identifier groups.
 * Phone as a mappable client field, sent exactly as the payer typed it.
 * Fields inside an embedded form (Pro) offered in the field mapping.

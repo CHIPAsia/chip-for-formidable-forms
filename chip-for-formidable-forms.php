@@ -92,6 +92,26 @@ function frm_chip_activate() {
 	FrmChipInstall::activate();
 }
 
+register_deactivation_hook( FRM_CHIP_FILE, 'frm_chip_deactivate' );
+
+/**
+ * Clear scheduled work on deactivation.
+ *
+ * The renewal cron must not keep running after the plugin is switched off,
+ * otherwise it would keep charging saved cards with no UI to stop it.
+ *
+ * @return void
+ */
+function frm_chip_deactivate() {
+	if ( ! class_exists( 'FrmTransLiteActionsController' ) ) {
+		return;
+	}
+
+	FrmChipFormidableForms::includes();
+
+	FrmChipInstall::deactivate();
+}
+
 /*
  * Deliberately no uninstall hook.
  *

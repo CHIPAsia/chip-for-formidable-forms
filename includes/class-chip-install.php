@@ -32,7 +32,20 @@ class FrmChipInstall {
 		self::ensure_payment_tables();
 		self::seed_settings();
 
+		// Recurring charges are issued by the site, so the renewal check has to
+		// be scheduled from the moment the plugin is active.
+		FrmChipRenewals::maybe_schedule();
+
 		update_option( self::VERSION_OPTION, FRM_CHIP_MODULE_VERSION );
+	}
+
+	/**
+	 * Run on deactivation.
+	 *
+	 * @return void
+	 */
+	public static function deactivate() {
+		FrmChipRenewals::unschedule();
 	}
 
 	/**

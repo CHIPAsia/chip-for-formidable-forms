@@ -527,9 +527,12 @@ class FrmChipActionsController {
 	/**
 	 * Build the URL CHIP posts asynchronous callbacks to.
 	 *
+	 * Public because the renewal engine creates its own purchases and must point
+	 * their callbacks at the same endpoint.
+	 *
 	 * @return string
 	 */
-	private static function get_callback_url() {
+	public static function get_callback_url() {
 		return add_query_arg(
 			array( 'frmchip_callback' => 1 ),
 			home_url( '/' )

@@ -4,6 +4,7 @@
 * Added - CHIP registered as a payment gateway on Formidable's shared Collect a Payment action, alongside Stripe, Square and PayPal.
 * Added - One-time payments through the CHIP hosted checkout.
 * Added - Recurring payments, charged from the site on a schedule using a card token stored by CHIP.
+* Added - Failed renewal retries on days 3, 5 and 7 after the due date; a rejected card token fails the subscription immediately rather than retrying.
 * Added - Payment method selection, configured globally and overridable per form.
 * Added - Runtime resolution of the DuitNow QR and ShopeePay identifier groups against the methods the brand actually has.
 * Added - Phone as a mappable client field, sent to CHIP exactly as the payer typed it.

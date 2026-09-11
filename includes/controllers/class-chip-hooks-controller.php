@@ -55,6 +55,10 @@ class FrmChipHooksController {
 		// Verify and record asynchronous CHIP callbacks.
 		add_action( 'init', 'FrmChipCallbackController::maybe_handle' );
 
+		// CHIP stores a card token but never renews on its own, so the site has
+		// to charge each period itself.
+		FrmChipRenewals::load_hooks();
+
 		// Run pending upgrade routines after an in-place update.
 		add_action( 'admin_init', 'FrmChipInstall::maybe_upgrade' );
 

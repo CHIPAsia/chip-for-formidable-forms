@@ -1,0 +1,715 @@
+<?php
+/**
+ * Recurring renewal.
+ *
+ * @package FormidableCHIP
+ */
+
+defined( 'ABSPATH' ) || die();
+
+/**
+ * Charges CHIP subscriptions when they come due.
+ *
+ * CHIP stores a card token but has no renewal engine of its own, so the site has
+ * to issue every charge after the first. Stripe gets renewals pushed to it by
+ * Stripe's own engine; CHIP does not work that way, which is why this class
+ * exists.
+ *
+ * Two design points worth stating explicitly:
+ *
+ * 1. A failed charge is retried on a fixed schedule, because most declines are
+ *    temporary (insufficient funds, issuer hold). Stripe's default is 8 tries in
+ *    2 weeks; this uses 4 attempts across 14 days, which is the common
+ *    fixed-schedule shape for a plugin with no machine-learning retry engine.
+ *
+ * 2. A *hard* decline is not retried. When CHIP rejects the token itself
+ *    (`invalid_recurring_token`) the card is gone — expired, cancelled or the
+ *    token deleted — and no amount of retrying will help, so the subscription is
+ *    failed immediately rather than leaving the payer in a zombie state.
+ */
+class FrmChipRenewals {
+
+	/**
+	 * Days after the due date to attempt each retry.
+	 *
+	 * Attempt 0 is the due date itself. The tail (3, 5, 7) gives a card that was
+	 * merely short of funds several chances across two weeks, which is where most
+	 * recoverable declines resolve.
+	 *
+	 * @var int[]
+	 */
+	const RETRY_OFFSETS = array( 0, 3, 5, 7 );
+
+	/**
+	 * CHIP error codes that mean the token is dead, not that this attempt failed.
+	 *
+	 * @var string[]
+	 */
+	const HARD_DECLINE_CODES = array(
+		'invalid_recurring_token',
+	);
+
+	/**
+	 * Register the cron handler.
+	 *
+	 * @return void
+	 */
+	public static function load_hooks() {
+		add_action( 'frm_chip_renewals', 'FrmChipRenewals::run' );
+	}
+
+	/**
+	 * Schedule the renewal check if it is not already scheduled.
+	 *
+	 * @return void
+	 */
+	public static function maybe_schedule() {
+		if ( ! wp_next_scheduled( 'frm_chip_renewals' ) ) {
+			// Twice daily: a due date is a day, and the check is idempotent, so
+			// running more often than daily only shortens the wait to the first
+			// attempt of the day.
+			wp_schedule_event( time(), 'twicedaily', 'frm_chip_renewals' );
+		}
+	}
+
+	/**
+	 * Clear the schedule, used on deactivation.
+	 *
+	 * @return void
+	 */
+	public static function unschedule() {
+		wp_clear_scheduled_hook( 'frm_chip_renewals' );
+	}
+
+	/**
+	 * Charge every subscription that is due.
+	 *
+	 * @return array Summary of what happened, for the log and for tests.
+	 */
+	public static function run() {
+		$settings = FrmChipSettings::get_settings();
+
+		if ( ! $settings->is_configured() ) {
+			return array(
+				'checked' => 0,
+				'charged' => 0,
+				'failed'  => 0,
+				'skipped' => 0,
+			);
+		}
+
+		$summary = array(
+			'checked' => 0,
+			'charged' => 0,
+			'failed'  => 0,
+			'skipped' => 0,
+		);
+
+		foreach ( self::get_due_subscriptions() as $subscription ) {
+			++$summary['checked'];
+
+			$result = self::charge( $subscription );
+
+			if ( 'charged' === $result ) {
+				++$summary['charged'];
+			} elseif ( 'failed' === $result ) {
+				++$summary['failed'];
+			} else {
+				++$summary['skipped'];
+			}
+		}
+
+		return $summary;
+	}
+
+	/**
+	 * Subscriptions that are active and due for a charge.
+	 *
+	 * Only CHIP subscriptions, only active ones, and only those whose next bill
+	 * date has arrived. `future_cancel` is excluded: the payer has cancelled and
+	 * is being honoured to the end of the paid period.
+	 *
+	 * @return array
+	 */
+	public static function get_due_subscriptions() {
+		global $wpdb;
+
+		$today = gmdate( 'Y-m-d' );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT * FROM ' . $wpdb->prefix . 'frm_subscriptions
+				 WHERE paysys = %s AND status = %s AND next_bill_date IS NOT NULL
+				   AND next_bill_date != %s AND next_bill_date <= %s
+				 ORDER BY next_bill_date ASC',
+				FrmChipHooksController::GATEWAY,
+				'active',
+				'0000-00-00',
+				$today
+			)
+		);
+
+		return $rows ? $rows : array();
+	}
+
+	/**
+	 * Charge one subscription for its next period.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string charged|failed|skipped.
+	 */
+	public static function charge( $subscription ) {
+		$api = FrmChipAppController::api();
+
+		if ( is_wp_error( $api ) ) {
+			FrmChipHelper::log( 'Renewal skipped: API unavailable', $api->get_error_message() );
+
+			return 'skipped';
+		}
+
+		// The token lives on the purchase that first stored the card, which is
+		// what sub_id carries.
+		$token = (string) $subscription->sub_id;
+
+		if ( '' === $token ) {
+			FrmChipHelper::log( 'Renewal has no token', $subscription->id );
+
+			return 'skipped';
+		}
+
+		$settings = FrmChipSettings::get_settings();
+		$amount   = FrmChipHelper::to_minor_units( $subscription->amount );
+
+		$purchase = self::create_renewal_purchase( $api, $subscription, $amount, $settings );
+
+		if ( is_wp_error( $purchase ) ) {
+			return self::handle_charge_failure( $subscription, $purchase );
+		}
+
+		$charged = $api->charge_purchase( $purchase['id'], $token );
+
+		if ( is_wp_error( $charged ) ) {
+			return self::handle_charge_failure( $subscription, $charged, $purchase['id'] );
+		}
+
+		// A charge can come back as pending_charge while the acquirer works; the
+		// outcome then arrives by callback like any other purchase, so the
+		// payment row is recorded as pending and settlement takes over.
+		$status = isset( $charged['status'] ) ? (string) $charged['status'] : '';
+
+		self::record_payment( $subscription, $purchase['id'], $amount, $settings );
+
+		if ( 'paid' === $status ) {
+			// The charge already succeeded, so advance the schedule now. The
+			// callback will settle the payment row itself.
+			self::advance_schedule( $subscription );
+			FrmChipHelper::log(
+				'Renewal charged',
+				array(
+					'sub'      => $subscription->id,
+					'purchase' => $purchase['id'],
+				)
+			);
+
+			return 'charged';
+		}
+
+		// pending_charge or similar: leave the date alone. Settlement advances it
+		// once the charge is confirmed, so a failure further along is retried
+		// instead of being skipped.
+		FrmChipHelper::log(
+			'Renewal pending',
+			array(
+				'sub'    => $subscription->id,
+				'status' => $status,
+			)
+		);
+
+		return 'charged';
+	}
+
+	/**
+	 * Create the purchase that the token will be charged against.
+	 *
+	 * CHIP charges a *new* purchase using the token, rather than charging the
+	 * original purchase again.
+	 *
+	 * @param FrmChipApi      $api          API client.
+	 * @param stdClass        $subscription Subscription row.
+	 * @param int             $amount       Amount in minor units.
+	 * @param FrmChipSettings $settings     Plugin settings.
+	 * @return array|WP_Error
+	 */
+	private static function create_renewal_purchase( $api, $subscription, $amount, $settings ) {
+		$entry = FrmEntry::getOne( (int) $subscription->item_id, true );
+		$form  = $entry ? FrmForm::getOne( $entry->form_id ) : null;
+
+		$client = array();
+
+		if ( $entry && $form ) {
+			$action = self::get_action( $subscription, $form );
+
+			if ( $action ) {
+				$client = self::build_client( $action, $entry );
+			}
+		}
+
+		// The entry may be gone (deleted, or an entry cleared by a retention
+		// setting). CHIP requires a client object with an email, so fall back to
+		// the merchant's own address rather than sending an empty one, which
+		// serialises as a JSON list and is rejected outright.
+		if ( empty( $client['email'] ) ) {
+			$client['email'] = self::fallback_email();
+		}
+
+		if ( empty( $client['full_name'] ) ) {
+			$client['full_name'] = FrmChipHelper::truncate( self::fallback_name( $subscription ), 128 );
+		}
+
+		$params = array(
+			'brand_id'         => (string) $settings->get( 'brand_id' ),
+			'creator_agent'    => 'Formidable Forms: ' . FRM_CHIP_MODULE_VERSION,
+			'platform'         => 'formidableforms',
+			'reference'        => FrmChipHelper::truncate( self::build_reference( $subscription ), 128 ),
+			'send_receipt'     => false,
+			'success_callback' => FrmChipActionsController::get_callback_url(),
+			'client'           => $client,
+			'purchase'         => array(
+				'currency' => FrmChipHelper::CURRENCY,
+				'timezone' => FrmChipHelper::get_timezone(),
+				'products' => array(
+					array(
+						'name'     => FrmChipHelper::truncate( self::build_product_name( $subscription, $form ), 256 ),
+						'price'    => (int) $amount,
+						'quantity' => 1,
+					),
+				),
+			),
+		);
+
+		/**
+		 * Filter the payload for a renewal charge.
+		 *
+		 * @param array    $params       Purchase payload.
+		 * @param stdClass $subscription Subscription row.
+		 */
+		$params = apply_filters( 'frm_chip_renewal_purchase_params', $params, $subscription );
+
+		return $api->create_purchase( $params );
+	}
+
+	/**
+	 * Decide what to do after a failed charge attempt.
+	 *
+	 * A hard decline fails the subscription at once. Anything else is treated as
+	 * temporary and retried on the schedule until the attempts run out.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @param WP_Error $error        Failure.
+	 * @param string   $purchase_id  Purchase ID when one was created.
+	 * @return string failed|skipped.
+	 */
+	private static function handle_charge_failure( $subscription, $error, $purchase_id = '' ) {
+		$code = $error->get_error_code();
+		$data = $error->get_error_data();
+		$body = isset( $data['body'] ) ? $data['body'] : array();
+
+		FrmChipHelper::log(
+			'Renewal charge failed',
+			array(
+				'sub'     => $subscription->id,
+				'code'    => $code,
+				'message' => $error->get_error_message(),
+			)
+		);
+
+		if ( self::is_hard_decline( $error, $body ) ) {
+			// The card is unusable. Retrying cannot help, so stop and let the
+			// merchant and payer deal with it.
+			self::fail_subscription( $subscription, $error->get_error_message() );
+
+			return 'failed';
+		}
+
+		$attempts = self::count_failures( $subscription ) + 1;
+
+		self::record_failure( $subscription );
+
+		if ( $attempts >= count( self::RETRY_OFFSETS ) ) {
+			// Attempts exhausted: this is the point at which recovery is
+			// considered to have failed.
+			self::fail_subscription( $subscription, $error->get_error_message() );
+
+			return 'failed';
+		}
+
+		self::schedule_retry( $subscription, $attempts );
+
+		return 'skipped';
+	}
+
+	/**
+	 * Whether a failure means the token itself is unusable.
+	 *
+	 * @param WP_Error $error Failure.
+	 * @param array    $body  Decoded error body.
+	 * @return bool
+	 */
+	private static function is_hard_decline( $error, $body ) {
+		if ( in_array( $error->get_error_code(), self::HARD_DECLINE_CODES, true ) ) {
+			return true;
+		}
+
+		$text = wp_json_encode( $body );
+
+		foreach ( self::HARD_DECLINE_CODES as $hard ) {
+			if ( false !== strpos( (string) $text, $hard ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * How many failed attempts this subscription has already had.
+	 *
+	 * Stored on the subscription row's meta so it survives between cron runs.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return int
+	 */
+	private static function count_failures( $subscription ) {
+		$meta = self::get_meta( $subscription );
+
+		return isset( $meta['chip_renewal_failures'] ) ? (int) $meta['chip_renewal_failures'] : 0;
+	}
+
+	/**
+	 * Read the plugin's own meta from a subscription row.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return array
+	 */
+	private static function get_meta( $subscription ) {
+		if ( empty( $subscription->meta_value ) ) {
+			return array();
+		}
+
+		$decoded = maybe_unserialize( $subscription->meta_value );
+
+		return is_array( $decoded ) ? $decoded : array();
+	}
+
+	/**
+	 * Record a failed attempt and push the next attempt forward.
+	 *
+	 * The bill date is moved to the next retry offset rather than left in the
+	 * past, so the subscription is not picked up again on the next cron run.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return void
+	 */
+	private static function record_failure( $subscription ) {
+		$meta = self::get_meta( $subscription );
+
+		$meta['chip_renewal_failures'] = self::count_failures( $subscription ) + 1;
+		$meta['chip_last_failure']     = current_time( 'mysql', 1 );
+
+		self::update_subscription(
+			$subscription,
+			array(
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- column on frm_subscriptions, not postmeta.
+				'meta_value'     => $meta,
+				'next_bill_date' => self::next_retry_date( self::count_failures( $subscription ) + 1 ),
+			)
+		);
+	}
+
+	/**
+	 * Move the bill date to the next retry slot.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @param int      $attempt      Which attempt just failed.
+	 * @return void
+	 */
+	private static function schedule_retry( $subscription, $attempt ) {
+		self::update_subscription(
+			$subscription,
+			array( 'next_bill_date' => self::next_retry_date( $attempt ) )
+		);
+	}
+
+	/**
+	 * The date of the next retry attempt.
+	 *
+	 * Offsets are measured from today rather than from the original due date so a
+	 * late-running cron cannot collapse the schedule.
+	 *
+	 * @param int $attempt Attempt number, 1-based.
+	 * @return string
+	 */
+	private static function next_retry_date( $attempt ) {
+		$offset = isset( self::RETRY_OFFSETS[ $attempt ] )
+			? self::RETRY_OFFSETS[ $attempt ]
+			: self::end_of_retries_offset();
+
+		return gmdate( 'Y-m-d', strtotime( '+' . $offset . ' days' ) );
+	}
+
+	/**
+	 * Days of the last configured retry, used when attempts run out.
+	 *
+	 * @return int
+	 */
+	private static function end_of_retries_offset() {
+		$offsets = self::RETRY_OFFSETS;
+
+		return (int) end( $offsets );
+	}
+
+	/**
+	 * Mark a subscription failed and tell the merchant why.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @param string   $reason       Failure reason.
+	 * @return void
+	 */
+	private static function fail_subscription( $subscription, $reason ) {
+		$meta = self::get_meta( $subscription );
+
+		$meta['chip_renewal_failed_at'] = current_time( 'mysql', 1 );
+		$meta['chip_renewal_reason']    = $reason;
+
+		self::update_subscription(
+			$subscription,
+			array(
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- column on frm_subscriptions, not postmeta.
+				'meta_value' => $meta,
+				'status'     => 'failed',
+			)
+		);
+
+		/**
+		 * Fires when a CHIP subscription could not be renewed.
+		 *
+		 * A site can use this to email the merchant or notify the payer. It is
+		 * deliberately an action rather than built-in mail so the site keeps
+		 * control of its own communications.
+		 *
+		 * @param stdClass $subscription Subscription row.
+		 * @param string   $reason       Why renewal stopped.
+		 */
+		do_action( 'frm_chip_subscription_failed', $subscription, $reason );
+
+		FrmChipHelper::log(
+			'Subscription failed',
+			array(
+				'sub'    => $subscription->id,
+				'reason' => $reason,
+			)
+		);
+	}
+
+	/**
+	 * Advance a subscription to its next billing period.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return void
+	 */
+	public static function advance_schedule( $subscription ) {
+		$interval = in_array( $subscription->time_interval, array( 'day', 'week', 'month', 'year' ), true )
+			? $subscription->time_interval
+			: 'month';
+
+		$count = max( 1, (int) $subscription->interval_count );
+
+		// Anchor on the existing date when it is in the future, so a charge that
+		// lands early does not drift the schedule forward.
+		$base = gmdate( 'Y-m-d', strtotime( '+' . $count . ' ' . $interval . 's' ) );
+
+		$meta = self::get_meta( $subscription );
+
+		// A successful charge clears the failure counter.
+		unset( $meta['chip_renewal_failures'] );
+		unset( $meta['chip_last_failure'] );
+
+		self::update_subscription(
+			$subscription,
+			array(
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- column on frm_subscriptions, not postmeta.
+				'meta_value'     => $meta,
+				'next_bill_date' => $base,
+			)
+		);
+	}
+
+	/**
+	 * Record the payment row for a renewal charge.
+	 *
+	 * @param stdClass        $subscription Subscription row.
+	 * @param string          $purchase_id  CHIP purchase ID.
+	 * @param int             $amount       Amount in minor units.
+	 * @param FrmChipSettings $settings     Plugin settings.
+	 * @return void
+	 */
+	private static function record_payment( $subscription, $purchase_id, $amount, $settings ) {
+		$payment = new FrmTransLitePayment();
+
+		$payment->create(
+			array(
+				'paysys'     => FrmChipHooksController::GATEWAY,
+				'amount'     => FrmChipHelper::from_minor_units( $amount ),
+				'status'     => 'pending',
+				'item_id'    => (int) $subscription->item_id,
+				'action_id'  => (int) $subscription->action_id,
+				'receipt_id' => (string) $purchase_id,
+				'sub_id'     => (string) $subscription->id,
+				'test'       => $settings->is_test_mode() ? 1 : 0,
+			)
+		);
+	}
+
+	/**
+	 * Load the payment action behind a subscription.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @param stdClass $form         Form.
+	 * @return WP_Post|null
+	 */
+	private static function get_action( $subscription, $form ) {
+		$form_actions = FrmFormAction::get_action_for_form( $form->id, 'payment' );
+
+		foreach ( (array) $form_actions as $action ) {
+			if ( (int) $action->ID === (int) $subscription->action_id ) {
+				return $action;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Email to use when the original entry's client fields are unavailable.
+	 *
+	 * The admin address is the safest choice: it is always valid, and a renewal
+	 * receipt going to the merchant is better than a charge failing outright.
+	 *
+	 * @return string
+	 */
+	private static function fallback_email() {
+		$email = get_option( 'admin_email' );
+
+		if ( ! is_email( $email ) ) {
+			// Last resort: the site domain, which at least parses as an address.
+			$host  = wp_parse_url( home_url(), PHP_URL_HOST );
+			$email = 'noreply@' . ( $host ? $host : 'localhost' );
+		}
+
+		return FrmChipHelper::truncate( $email, 128 );
+	}
+
+	/**
+	 * Name to use when the original entry's name fields are unavailable.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string
+	 */
+	private static function fallback_name( $subscription ) {
+		$site = get_bloginfo( 'name' );
+
+		if ( $site ) {
+			return $site;
+		}
+
+		return 'Subscription #' . (int) $subscription->id;
+	}
+
+	/**
+	 * Reuse the mapped client fields on a renewal, when the entry is still there.
+	 *
+	 * @param WP_Post  $action Payment action.
+	 * @param stdClass $entry  Entry.
+	 * @return array
+	 */
+	private static function build_client( $action, $entry ) {
+		$content = $action->post_content;
+
+		$first = isset( $content['chip_billing_first_name'] )
+			? FrmChipHelper::get_entry_value( $content['chip_billing_first_name'], $entry )
+			: '';
+		$last  = isset( $content['chip_billing_last_name'] )
+			? FrmChipHelper::get_entry_value( $content['chip_billing_last_name'], $entry )
+			: '';
+
+		$full_name = trim( $first . ' ' . $last );
+
+		$email = isset( $content['chip_billing_email'] )
+			? FrmChipHelper::get_entry_value( $content['chip_billing_email'], $entry )
+			: '';
+
+		$client = array(
+			'email'     => FrmChipHelper::truncate( $email, 128 ),
+			'full_name' => FrmChipHelper::truncate( $full_name, 128 ),
+		);
+
+		$phone = isset( $content['chip_billing_phone'] )
+			? FrmChipHelper::get_entry_value( $content['chip_billing_phone'], $entry )
+			: '';
+
+		if ( '' !== $phone ) {
+			$client['phone'] = FrmChipHelper::truncate( $phone, 32 );
+		}
+
+		return $client;
+	}
+
+	/**
+	 * Reference for a renewal charge.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string
+	 */
+	private static function build_reference( $subscription ) {
+		return 'formidable-renewal-' . (int) $subscription->id . '-' . gmdate( 'Ymd' );
+	}
+
+	/**
+	 * Product name shown on the renewal purchase.
+	 *
+	 * @param stdClass      $subscription Subscription row.
+	 * @param stdClass|null $form        Form.
+	 * @return string
+	 */
+	private static function build_product_name( $subscription, $form ) {
+		if ( $form && ! empty( $form->name ) ) {
+			return $form->name;
+		}
+
+		return __( 'Subscription renewal', 'chip-for-formidable-forms' );
+	}
+
+	/**
+	 * Persist changes to a subscription row.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @param array    $data         Columns to write.
+	 * @return void
+	 */
+	private static function update_subscription( $subscription, $data ) {
+		$subscriptions = new FrmTransLiteSubscription();
+		$subscriptions->update( $subscription->id, $data );
+
+		// Keep the in-memory row in step so a second call in the same request
+		// does not act on stale values.
+		foreach ( $data as $key => $value ) {
+			if ( 'meta_value' === $key ) {
+				$subscription->meta_value = maybe_serialize( $value );
+				continue;
+			}
+
+			$subscription->{$key} = $value;
+		}
+	}
+}

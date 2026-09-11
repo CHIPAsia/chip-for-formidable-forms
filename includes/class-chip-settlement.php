@@ -113,6 +113,8 @@ class FrmChipSettlement {
 
 		if ( self::is_paid( $chip_status ) ) {
 			self::settle_subscription( $purchase, $payment );
+			// A paid renewal moves the subscription on to its next period.
+			self::advance_renewal( $payment );
 		}
 
 		if ( $new_status === $payment->status ) {
@@ -125,6 +127,36 @@ class FrmChipSettlement {
 		FrmTransLitePaymentsController::change_payment_status( $payment, $new_status );
 
 		return true;
+	}
+
+	/**
+	 * Advance a subscription's billing date after a paid renewal.
+	 *
+	 * Only applies to renewal payments: the first payment of a subscription
+	 * activates it (see settle_subscription) rather than moving the date.
+	 *
+	 * @param stdClass $payment Payment row.
+	 * @return void
+	 */
+	private static function advance_renewal( $payment ) {
+		if ( empty( $payment->sub_id ) ) {
+			return;
+		}
+
+		$subscriptions = new FrmTransLiteSubscription();
+		$subscription  = $subscriptions->get_one( $payment->sub_id );
+
+		if ( ! $subscription || FrmChipHooksController::GATEWAY !== $subscription->paysys ) {
+			return;
+		}
+
+		// Only an active subscription renews; a pending one is being activated
+		// by this very payment, and a cancelled one should not be re-dated.
+		if ( 'active' !== (string) $subscription->status ) {
+			return;
+		}
+
+		FrmChipRenewals::advance_schedule( $subscription );
 	}
 
 	/**
