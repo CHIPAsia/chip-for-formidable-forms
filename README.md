@@ -10,9 +10,10 @@ action.
 
 ## Requirements
 
-- WordPress 6.3 or newer
-- PHP 7.4 or newer
+- WordPress 6.3 or newer (tested to 7.1)
 - Formidable Forms 6.35 or newer (free or Pro)
+- PHP 7.4 or newer, the minimum WordPress itself requires (PHP 8.3+ recommended)
+- MySQL 5.5.5 or newer, the minimum WordPress itself requires (MariaDB 10.11+ or MySQL 8.0+ recommended)
 
 ## Installation
 

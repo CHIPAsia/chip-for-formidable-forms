@@ -56,10 +56,10 @@ Integrate your Formidable Forms with CHIP as documented in our [API Documentatio
 
 = Minimum Requirements =
 
-* WordPress 6.3 or greater
+* WordPress 6.3 or greater (tested up to 7.1)
 * Formidable Forms plugin 6.35 or greater (free or Pro)
-* PHP 7.4 or greater (PHP 8.0+ recommended)
-* MySQL 5.6 or greater, OR MariaDB 10.1 or greater
+* PHP 7.4 or greater, the minimum WordPress itself requires (PHP 8.3 or greater recommended)
+* MySQL 5.5.5 or greater, the minimum WordPress itself requires (MariaDB 10.11 or greater, or MySQL 8.0 or greater, recommended)
 * A CHIP account with a Brand ID and Secret Key
 
 = Where to get it =
