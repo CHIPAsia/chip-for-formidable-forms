@@ -261,7 +261,22 @@ class FrmChipSettlement {
 		}
 
 		$lock = self::lock_name( $purchase_id );
-		self::acquire_lock( $lock );
+		$held = self::acquire_lock( $lock );
+
+		if ( ! $held ) {
+			// Another request is settling this purchase and did not finish in
+			// time. Do not settle alongside it: two applies would fire the
+			// merchant's payment triggers twice. Report a retryable failure so
+			// CHIP redelivers the callback later, by which point the other
+			// request will have finished.
+			return new WP_Error(
+				'chip_settle_busy',
+				__(
+					'This payment is already being processed. The result will be confirmed shortly.',
+					'chip-for-formidable-forms'
+				)
+			);
+		}
 
 		try {
 			// Re-read under the lock: a concurrent delivery may have settled it
@@ -283,7 +298,7 @@ class FrmChipSettlement {
 				'settled'  => $settled,
 			);
 		} finally {
-			self::release_lock( $lock );
+			self::release_lock( $lock, $held );
 		}
 	}
 
@@ -308,26 +323,40 @@ class FrmChipSettlement {
 	 * The lock is held per database connection, so it serialises the browser
 	 * return and the server callback even though they are separate requests.
 	 *
+	 * GET_LOCK returns 1 when the lock was taken, 0 when the wait timed out and
+	 * NULL on error. Only 1 means the caller is protected, so the result is
+	 * checked: on a timeout the caller must not settle, otherwise the lock would
+	 * silently do nothing precisely when two settles are racing.
+	 *
 	 * @param string $lock Lock name.
-	 * @return void
+	 * @return bool True when the lock is held.
 	 */
 	private static function acquire_lock( $lock ) {
 		global $wpdb;
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$wpdb->get_results( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $lock, self::LOCK_TIMEOUT ) );
+		$acquired = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $lock, self::LOCK_TIMEOUT ) );
+
+		return '1' === (string) $acquired;
 	}
 
 	/**
 	 * Release the MySQL advisory lock for a payment.
 	 *
-	 * @param string $lock Lock name.
+	 * @param string $lock    Lock name.
+	 * @param bool   $held    Whether this request actually took the lock.
 	 * @return void
 	 */
-	private static function release_lock( $lock ) {
+	private static function release_lock( $lock, $held ) {
+		if ( ! $held ) {
+			// Releasing a lock this request never took would release someone
+			// else's, letting a third request in alongside them.
+			return;
+		}
+
 		global $wpdb;
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$wpdb->get_results( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
+		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
 	}
 }

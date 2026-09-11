@@ -60,13 +60,16 @@ class FrmChipReturnController {
 		}
 
 		// Only take over for forms that actually used CHIP.
-		$payment = self::get_latest_payment( $entry_id );
+		$payments = self::get_settleable_payments( $entry_id );
 
-		if ( ! $payment ) {
-			return $html;
+		if ( ! $payments ) {
+			// Nothing left to settle. If the entry has a CHIP payment at all it
+			// already reached a final state, so show the result rather than the
+			// form so a returning payer is not asked to pay again.
+			return self::maybe_show_final_result( $html, $entry_id, $form, $entry );
 		}
 
-		$result = FrmChipSettlement::verify_and_settle( $payment->receipt_id );
+		$result = self::settle_all( $payments );
 
 		if ( is_wp_error( $result ) ) {
 			FrmChipHelper::log( 'Return verification failed', $result->get_error_message() );
@@ -91,6 +94,92 @@ class FrmChipReturnController {
 		// Anything still in flight: tell the payer to wait for confirmation
 		// rather than implying the payment succeeded or failed.
 		return self::insert_message( $html, self::get_pending_message() );
+	}
+
+	/**
+	 * Verify every unsettled CHIP payment for the entry.
+	 *
+	 * Only one can be the purchase the payer just completed, and that is the one
+	 * whose status decides what the payer sees. The rest are verified too so an
+	 * abandoned earlier attempt is not left pending forever.
+	 *
+	 * A failure on one payment does not stop the others: the entry's outcome is
+	 * driven by whichever purchase is actually paid.
+	 *
+	 * @param array $payments Payment rows.
+	 * @return array|WP_Error Payment/settlement info for the deciding purchase.
+	 */
+	private static function settle_all( $payments ) {
+		$deciding   = null;
+		$last_error = null;
+
+		foreach ( $payments as $payment ) {
+			$result = FrmChipSettlement::verify_and_settle( $payment->receipt_id );
+
+			if ( is_wp_error( $result ) ) {
+				$last_error = $result;
+				continue;
+			}
+
+			$status = isset( $result['purchase']['status'] ) ? (string) $result['purchase']['status'] : '';
+
+			// A paid purchase settles the outcome immediately.
+			if ( FrmChipSettlement::is_paid( $status ) ) {
+				return $result;
+			}
+
+			if ( null === $deciding ) {
+				$deciding = $result;
+			}
+		}
+
+		if ( null !== $deciding ) {
+			return $deciding;
+		}
+
+		return $last_error ? $last_error : new WP_Error(
+			'chip_payment_not_found',
+			__( 'That payment does not match a payment recorded on this site.', 'chip-for-formidable-forms' )
+		);
+	}
+
+	/**
+	 * Show the stored outcome for an entry whose payments are all final.
+	 *
+	 * Reached when a payer reloads the return URL after the payment completed.
+	 * The form is replaced rather than shown again so they are not invited to
+	 * pay a second time.
+	 *
+	 * @param string   $html     Form HTML.
+	 * @param int      $entry_id Entry ID.
+	 * @param stdClass $form     Form.
+	 * @param stdClass $entry    Entry.
+	 * @return string
+	 */
+	private static function maybe_show_final_result( $html, $entry_id, $form, $entry ) {
+		$payments = new FrmTransLitePayment();
+		$rows     = $payments->get_all_for_entry( $entry_id );
+
+		foreach ( (array) $rows as $row ) {
+			if ( FrmChipHooksController::GATEWAY !== $row->paysys ) {
+				continue;
+			}
+
+			if ( 'complete' === (string) $row->status ) {
+				return self::render_success( $html, $form, $entry );
+			}
+
+			if ( 'failed' === (string) $row->status ) {
+				return self::insert_message(
+					$html,
+					'<div class="frm_error_style">'
+						. esc_html__( 'Your payment was not completed.', 'chip-for-formidable-forms' )
+						. '</div>'
+				);
+			}
+		}
+
+		return $html;
 	}
 
 	/**
@@ -122,22 +211,39 @@ class FrmChipReturnController {
 	}
 
 	/**
-	 * Get the most recent payment for an entry.
+	 * Get the CHIP payments for an entry that could still settle.
+	 *
+	 * An entry can carry more than one CHIP payment when a payer retries after a
+	 * failure. The return URL identifies the entry, not the purchase, so every
+	 * unsettled payment for that entry is verified rather than only the newest —
+	 * otherwise a payer returning from a second attempt would leave the newest
+	 * payment pending, and settling "the latest" could mark the wrong row paid.
+	 *
+	 * Already-final payments are skipped so a return does no needless API work
+	 * and cannot disturb a completed record.
 	 *
 	 * @param int $entry_id Entry ID.
-	 * @return stdClass|null
+	 * @return array Payment rows, newest first.
 	 */
-	private static function get_latest_payment( $entry_id ) {
+	private static function get_settleable_payments( $entry_id ) {
 		$payments = new FrmTransLitePayment();
 		$rows     = $payments->get_all_for_entry( $entry_id );
+		$final    = array( 'complete', 'refunded', 'canceled', 'failed' );
+		$pending  = array();
 
 		foreach ( (array) $rows as $row ) {
-			if ( FrmChipHooksController::GATEWAY === $row->paysys && ! empty( $row->receipt_id ) ) {
-				return $row;
+			if ( FrmChipHooksController::GATEWAY !== $row->paysys || empty( $row->receipt_id ) ) {
+				continue;
 			}
+
+			if ( in_array( (string) $row->status, $final, true ) ) {
+				continue;
+			}
+
+			$pending[] = $row;
 		}
 
-		return null;
+		return $pending;
 	}
 
 	/**
