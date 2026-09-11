@@ -26,6 +26,12 @@ class FrmChipHelper {
 	/**
 	 * Turn a CHIP error response into a message worth showing an admin.
 	 *
+	 * CHIP reports validation failures as a map of field name to a list of
+	 * entries: {"success_callback":[{"message":"...","code":"..."}]}. Errors can
+	 * also arrive as a plain string, or as a list under an "errors" key. All of
+	 * those shapes are unwrapped here so the real reason is surfaced rather than
+	 * a generic HTTP status.
+	 *
 	 * @param mixed $decoded Decoded response body.
 	 * @param int   $code    HTTP status code.
 	 * @return string
@@ -33,30 +39,25 @@ class FrmChipHelper {
 	public static function describe_api_error( $decoded, $code ) {
 		$parts = array();
 
+		if ( is_string( $decoded ) && '' !== trim( $decoded ) ) {
+			$parts[] = trim( $decoded );
+		}
+
 		if ( is_array( $decoded ) ) {
 			foreach ( $decoded as $key => $value ) {
-				if ( 'errors' === $key && is_array( $value ) ) {
-					foreach ( $value as $error ) {
-						$parts[] = self::describe_single_error( $error );
-					}
-					continue;
-				}
-
-				if ( is_array( $value ) && isset( $value['message'] ) ) {
-					$parts[] = $value['message'];
-					continue;
-				}
-
-				if ( is_string( $value ) ) {
-					$parts[] = $value;
+				// Each entry may be a list of error objects, a single object, or
+				// a string. Collect every message found.
+				foreach ( self::collect_messages( $value ) as $message ) {
+					$parts[] = self::label_message( $key, $message );
 				}
 			}
 		}
 
-		$parts = array_filter( array_map( 'trim', $parts ) );
+		$parts = array_values( array_filter( array_map( 'trim', $parts ) ) );
 
 		if ( $parts ) {
-			return implode( ' ', $parts );
+			// Keep the message readable; a long validation list is truncated.
+			return implode( ' ', array_slice( array_unique( $parts ), 0, 4 ) );
 		}
 
 		return sprintf(
@@ -67,21 +68,50 @@ class FrmChipHelper {
 	}
 
 	/**
-	 * Describe a single error entry from a CHIP response.
+	 * Pull every human readable message out of an error value.
 	 *
-	 * @param mixed $error Error entry, usually an array with a message key.
+	 * @param mixed $value Error value from a CHIP response.
+	 * @return array
+	 */
+	private static function collect_messages( $value ) {
+		$messages = array();
+
+		if ( is_string( $value ) ) {
+			return array( $value );
+		}
+
+		if ( ! is_array( $value ) ) {
+			return $messages;
+		}
+
+		if ( isset( $value['message'] ) ) {
+			return array( (string) $value['message'] );
+		}
+
+		foreach ( $value as $entry ) {
+			foreach ( self::collect_messages( $entry ) as $message ) {
+				$messages[] = $message;
+			}
+		}
+
+		return $messages;
+	}
+
+	/**
+	 * Prefix a message with the field it belongs to, when useful.
+	 *
+	 * Numeric keys are list indexes, not field names, so they are dropped.
+	 *
+	 * @param mixed  $key     Response key.
+	 * @param string $message Message text.
 	 * @return string
 	 */
-	private static function describe_single_error( $error ) {
-		if ( is_string( $error ) ) {
-			return $error;
+	private static function label_message( $key, $message ) {
+		if ( is_int( $key ) || '' === (string) $key || 'errors' === $key ) {
+			return $message;
 		}
 
-		if ( is_array( $error ) && isset( $error['message'] ) ) {
-			return (string) $error['message'];
-		}
-
-		return '';
+		return $key . ': ' . $message;
 	}
 
 	/**

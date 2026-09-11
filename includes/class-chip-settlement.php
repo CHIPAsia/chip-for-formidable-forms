@@ -208,54 +208,126 @@ class FrmChipSettlement {
 	}
 
 	/**
+	 * How long to wait for the per-payment lock, in seconds.
+	 *
+	 * @var int
+	 */
+	const LOCK_TIMEOUT = 15;
+
+	/**
 	 * Verify a purchase with CHIP and settle it.
 	 *
 	 * Used by both the return handler and the callback handler. The server side
 	 * lookup is what makes the outcome trustworthy: a payer could otherwise
 	 * hand-craft a return URL.
 	 *
-	 * @param string $purchase_id CHIP purchase ID.
+	 * The whole settle runs under a per-payment lock. The two paths can arrive
+	 * at the same moment — a payer returning while a callback is still being
+	 * processed, or CHIP redelivering a callback it thinks failed — and without
+	 * the lock both would read the same starting status and both would apply the
+	 * outcome, firing the merchant's payment triggers twice.
+	 *
+	 * @param string     $purchase_id      CHIP purchase ID.
+	 * @param array|null $trusted_purchase Purchase already verified by signature,
+	 *                                     or null to fetch it from the API.
 	 * @return array|WP_Error {
 	 *     @type stdClass $payment  Payment row.
 	 *     @type array    $purchase Decoded CHIP purchase.
 	 *     @type bool     $settled  Whether the status changed.
 	 * }
 	 */
-	public static function verify_and_settle( $purchase_id ) {
-		$api = FrmChipAppController::api();
+	public static function verify_and_settle( $purchase_id, $trusted_purchase = null ) {
+		$purchase = $trusted_purchase;
 
-		if ( is_wp_error( $api ) ) {
-			return $api;
+		if ( null === $purchase ) {
+			$api = FrmChipAppController::api();
+
+			if ( is_wp_error( $api ) ) {
+				return $api;
+			}
+
+			$purchase = $api->get_purchase( $purchase_id );
+
+			if ( is_wp_error( $purchase ) ) {
+				return $purchase;
+			}
+
+			if ( empty( $purchase['id'] ) ) {
+				return new WP_Error(
+					'chip_purchase_not_found',
+					__( 'CHIP could not find that payment.', 'chip-for-formidable-forms' )
+				);
+			}
 		}
 
-		$purchase = $api->get_purchase( $purchase_id );
+		$lock = self::lock_name( $purchase_id );
+		self::acquire_lock( $lock );
 
-		if ( is_wp_error( $purchase ) ) {
-			return $purchase;
-		}
+		try {
+			// Re-read under the lock: a concurrent delivery may have settled it
+			// already, in which case apply() sees no change and does nothing.
+			$payment = self::get_payment_by_purchase( $purchase_id );
 
-		if ( empty( $purchase['id'] ) ) {
-			return new WP_Error(
-				'chip_purchase_not_found',
-				__( 'CHIP could not find that payment.', 'chip-for-formidable-forms' )
+			if ( ! $payment ) {
+				return new WP_Error(
+					'chip_payment_not_found',
+					__( 'That payment does not match a payment recorded on this site.', 'chip-for-formidable-forms' )
+				);
+			}
+
+			$settled = self::apply( $purchase, $payment );
+
+			return array(
+				'payment'  => $payment,
+				'purchase' => $purchase,
+				'settled'  => $settled,
 			);
+		} finally {
+			self::release_lock( $lock );
 		}
+	}
 
-		$payment = self::get_payment_by_purchase( $purchase_id );
+	/**
+	 * Build the advisory lock name for a purchase.
+	 *
+	 * MySQL caps lock names at 64 characters, so the purchase ID is reduced to
+	 * characters that are safe in a lock name and truncated.
+	 *
+	 * @param string $purchase_id CHIP purchase ID.
+	 * @return string
+	 */
+	private static function lock_name( $purchase_id ) {
+		$safe = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $purchase_id );
 
-		if ( ! $payment ) {
-			return new WP_Error(
-				'chip_payment_not_found',
-				__( 'That payment does not match a payment recorded on this site.', 'chip-for-formidable-forms' )
-			);
-		}
+		return 'frm_chip_payment_' . substr( (string) $safe, 0, 40 );
+	}
 
-		$settled = self::apply( $purchase, $payment );
+	/**
+	 * Take the MySQL advisory lock for a payment.
+	 *
+	 * The lock is held per database connection, so it serialises the browser
+	 * return and the server callback even though they are separate requests.
+	 *
+	 * @param string $lock Lock name.
+	 * @return void
+	 */
+	private static function acquire_lock( $lock ) {
+		global $wpdb;
 
-		return array(
-			'payment'  => $payment,
-			'purchase' => $purchase,
-			'settled'  => $settled,
-		);
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->get_results( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $lock, self::LOCK_TIMEOUT ) );
+	}
+
+	/**
+	 * Release the MySQL advisory lock for a payment.
+	 *
+	 * @param string $lock Lock name.
+	 * @return void
+	 */
+	private static function release_lock( $lock ) {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->get_results( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
 	}
 }

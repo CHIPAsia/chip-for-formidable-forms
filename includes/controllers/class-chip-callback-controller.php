@@ -29,13 +29,6 @@ class FrmChipCallbackController {
 	const ARG = 'frmchip_callback';
 
 	/**
-	 * How long to wait for the per-payment lock, in seconds.
-	 *
-	 * @var int
-	 */
-	const LOCK_TIMEOUT = 15;
-
-	/**
 	 * Handle a callback request when present.
 	 *
 	 * @return void
@@ -80,33 +73,20 @@ class FrmChipCallbackController {
 			self::respond( 401, 'Invalid signature' );
 		}
 
-		// Serialise concurrent deliveries of the same purchase while leaving
-		// other payments free to run in parallel.
-		$lock = 'frm_chip_payment_' . $purchase_id;
-		self::acquire_lock( $lock );
+		// verify_and_settle() takes the per-payment lock itself, so the browser
+		// return and this callback cannot settle the same purchase at once.
+		$trusted = $verified['authoritative'] ? $payload : null;
 
-		try {
-			// Re-read under the lock: a concurrent delivery may have settled it.
-			$payment = FrmChipSettlement::get_payment_by_purchase( $purchase_id );
+		$result = FrmChipSettlement::verify_and_settle( $purchase_id, $trusted );
 
-			if ( ! $payment ) {
-				self::respond( 200, 'Ignored' );
-			}
+		if ( is_wp_error( $result ) ) {
+			FrmChipHelper::log( 'Callback verification failed', $result->get_error_message() );
 
-			if ( $verified['authoritative'] ) {
-				// Signature checked out, so the payload can be trusted directly.
-				FrmChipSettlement::apply( $payload, $payment );
-			} else {
-				// No public key available: confirm against the API instead.
-				$result = FrmChipSettlement::verify_and_settle( $purchase_id );
+			// A payment this site does not know about will never settle, so stop
+			// CHIP retrying. Anything else is worth another delivery.
+			$code = 'chip_payment_not_found' === $result->get_error_code() ? 200 : 500;
 
-				if ( is_wp_error( $result ) ) {
-					FrmChipHelper::log( 'Callback verification failed', $result->get_error_message() );
-					self::respond( 500, 'Verification failed' );
-				}
-			}
-		} finally {
-			self::release_lock( $lock );
+			self::respond( $code, 'Verification failed' );
 		}
 
 		self::respond( 200, 'OK' );
@@ -165,32 +145,6 @@ class FrmChipCallbackController {
 		}
 
 		return array( 'authoritative' => true );
-	}
-
-	/**
-	 * Take the MySQL advisory lock for a payment.
-	 *
-	 * @param string $lock Lock name.
-	 * @return void
-	 */
-	private static function acquire_lock( $lock ) {
-		global $wpdb;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$wpdb->get_results( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $lock, self::LOCK_TIMEOUT ) );
-	}
-
-	/**
-	 * Release the MySQL advisory lock for a payment.
-	 *
-	 * @param string $lock Lock name.
-	 * @return void
-	 */
-	private static function release_lock( $lock ) {
-		global $wpdb;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$wpdb->get_results( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
 	}
 
 	/**
