@@ -1,0 +1,13 @@
+== Changelog ==
+
+= 1.0.0 2026-09-11 =
+* Added - CHIP registered as a payment gateway on Formidable's shared Collect a Payment action, alongside Stripe, Square and PayPal.
+* Added - One-time payments through the CHIP hosted checkout.
+* Added - Recurring payments, charged from the site on a schedule using a card token stored by CHIP.
+* Added - Payment method selection, configured globally and overridable per form.
+* Added - Runtime resolution of the DuitNow QR and ShopeePay identifier groups against the methods the brand actually has.
+* Added - Refunds from the Formidable payments screen.
+* Added - Subscription cancellation, which removes the reusable token and stops future charges.
+* Added - Signature verified server callbacks, with verification against the CHIP API as a fallback.
+* Added - Global settings section for credentials, purchase defaults and the payment method list.
+* Added - Filters: `frm_chip_purchase_params`, `frm_chip_return_url`, `frm_chip_purchase_timezone`, `frm_chip_action_field_options`, `frm_chip_sslverify`.

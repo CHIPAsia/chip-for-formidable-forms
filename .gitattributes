@@ -5,13 +5,24 @@
 *.css text eol=lf
 *.txt text eol=lf
 
-# Exclude dev files from release zips
+# Exclude dev files
 *.md export-ignore
+node_modules/ export-ignore
+vendor/ export-ignore
+composer.lock export-ignore
+composer.json export-ignore
 .gitignore export-ignore
 .gitattributes export-ignore
 .github/ export-ignore
-composer.json export-ignore
-composer.lock export-ignore
+README.md export-ignore
+.wordpress-org/ export-ignore
+
+# Binary files
+*.png binary
+*.jpg binary
+
+# Release zip: exclude tests and dev config
 phpcs.xml export-ignore
-phpunit.xml.dist export-ignore
-tests/ export-ignore
+docker-compose.yml export-ignore
+Dockerfile export-ignore
+.wp-env.json export-ignore

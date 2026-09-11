@@ -641,6 +641,20 @@ class FrmChipActionsController {
 	}
 
 	/**
+	 * Print the CHIP symbol used by the gateway tab icon.
+	 *
+	 * Formidable resolves each gateway tab icon as `frm_<gateway>_full_icon`
+	 * against its own SVG sprite, which has no CHIP symbol, so the tab would
+	 * otherwise render as an empty box. The sprite is emitted with readfile()
+	 * and exposes no filter, so the symbol is appended to the page instead.
+	 *
+	 * @return void
+	 */
+	public static function print_gateway_icon() {
+		include FRM_CHIP_PATH . 'includes/views/gateway-icon.php';
+	}
+
+	/**
 	 * Get the receipt link for a CHIP payment.
 	 *
 	 * Kept for parity with the other gateways; CHIP has no public transaction

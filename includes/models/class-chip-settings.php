@@ -278,24 +278,4 @@ class FrmChipSettings {
 
 		FrmChipPaymentMethods::clear_cache();
 	}
-
-	/**
-	 * Delete stored settings.
-	 *
-	 * @return void
-	 */
-	public static function uninstall() {
-		delete_option( FRM_CHIP_OPTION );
-
-		$settings = self::get_settings();
-
-		if ( $settings->is_configured() ) {
-			$api    = FrmChipApi::get_instance( $settings->get( 'secret_key' ), $settings->get( 'brand_id' ) );
-			$public = $api->get_company_uid();
-
-			if ( ! is_wp_error( $public ) ) {
-				delete_option( 'frm_chip_public_key_' . $public );
-			}
-		}
-	}
 }

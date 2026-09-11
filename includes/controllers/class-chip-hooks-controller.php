@@ -88,6 +88,9 @@ class FrmChipHooksController {
 		// Admin script for the gateway toggle on the payment action.
 		add_action( 'frm_add_form_option_section', 'FrmChipActionsController::enqueue_admin_script' );
 
+		// CHIP symbol for the gateway tab icon, which Formidable's sprite lacks.
+		add_action( 'admin_footer', 'FrmChipActionsController::print_gateway_icon' );
+
 		// Refund support on the payments screen.
 		add_action( 'frm_pay_chip_sidebar', 'FrmChipPaymentsController::sidebar_actions' );
 	}

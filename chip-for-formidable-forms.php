@@ -91,3 +91,16 @@ function frm_chip_activate() {
 
 	FrmChipInstall::activate();
 }
+
+/*
+ * Deliberately no uninstall hook.
+ *
+ * Uninstalling leaves the stored credentials and cached CHIP public key in
+ * place, matching CHIP for Gravity Forms. Reinstalling therefore restores a
+ * working connection instead of silently dropping the merchant's settings, and
+ * a merchant who reinstalls to retry a failed setup is not locked out of the
+ * CHIP dashboard.
+ *
+ * Nothing here writes rows to Formidable's own tables, so there is no orphaned
+ * data beyond the two options above.
+ */
