@@ -62,7 +62,6 @@ class FrmChipSettings {
 			'brand_id'          => '',
 			'due_strict'        => 0,
 			'due_strict_timing' => 60,
-			'send_receipt'      => 0,
 			'refund'            => 1,
 			'whitelist_enabled' => 0,
 			'whitelist'         => array(),
@@ -244,7 +243,6 @@ class FrmChipSettings {
 	public function update( array $params ) {
 		$this->settings->test_mode         = empty( $params['frm_chip_test_mode'] ) ? 0 : 1;
 		$this->settings->due_strict        = empty( $params['frm_chip_due_strict'] ) ? 0 : 1;
-		$this->settings->send_receipt      = empty( $params['frm_chip_send_receipt'] ) ? 0 : 1;
 		$this->settings->refund            = empty( $params['frm_chip_refund'] ) ? 0 : 1;
 		$this->settings->whitelist_enabled = empty( $params['frm_chip_whitelist_enabled'] ) ? 0 : 1;
 

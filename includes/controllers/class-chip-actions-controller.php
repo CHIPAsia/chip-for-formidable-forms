@@ -36,6 +36,7 @@ class FrmChipActionsController {
 		$defaults['chip_billing_first_name'] = '';
 		$defaults['chip_billing_last_name']  = '';
 		$defaults['chip_billing_email']      = '';
+		$defaults['chip_billing_phone']      = '';
 		$defaults['chip_billing_address']    = '';
 		$defaults['chip_product_name']       = '';
 		$defaults['chip_reference']          = '';
@@ -64,6 +65,7 @@ class FrmChipActionsController {
 			'chip_billing_first_name',
 			'chip_billing_last_name',
 			'chip_billing_email',
+			'chip_billing_phone',
 			'chip_billing_address',
 			'chip_reference',
 		);
@@ -327,6 +329,7 @@ class FrmChipActionsController {
 		$client_email = FrmChipHelper::get_entry_value( $action->post_content['chip_billing_email'], $entry );
 		$first_name   = FrmChipHelper::get_entry_value( $action->post_content['chip_billing_first_name'], $entry );
 		$last_name    = FrmChipHelper::get_entry_value( $action->post_content['chip_billing_last_name'], $entry );
+		$phone        = FrmChipHelper::get_entry_value( $action->post_content['chip_billing_phone'], $entry );
 
 		$full_name = trim( $first_name . ' ' . $last_name );
 
@@ -349,20 +352,30 @@ class FrmChipActionsController {
 			$reference = 'formidable-' . $form->id . '-' . $entry->id;
 		}
 
+		$client = array(
+			'email'     => FrmChipHelper::truncate( $client_email, 128 ),
+			'full_name' => FrmChipHelper::truncate( $full_name, 128 ),
+		);
+
+		// Send the phone exactly as the payer typed it. Omitted entirely when
+		// the field is unmapped or blank, so CHIP never receives an empty string.
+		if ( '' !== $phone ) {
+			$client['phone'] = FrmChipHelper::truncate( $phone, 32 );
+		}
+
 		$params = array(
 			'brand_id'         => (string) $settings->get( 'brand_id' ),
 			'creator_agent'    => 'Formidable Forms: ' . FRM_CHIP_MODULE_VERSION,
 			'platform'         => 'formidableforms',
 			'reference'        => FrmChipHelper::truncate( $reference, 128 ),
-			'send_receipt'     => (bool) $settings->get( 'send_receipt' ),
+			// Deliberately false: CHIP's own receipt is not sent, so the site
+			// stays in control of payer communication.
+			'send_receipt'     => false,
 			'success_callback' => self::get_callback_url(),
 			'success_redirect' => self::get_return_url( $form, $entry, 'success' ),
 			'failure_redirect' => self::get_return_url( $form, $entry, 'failed' ),
 			'cancel_redirect'  => self::get_return_url( $form, $entry, 'cancelled' ),
-			'client'           => array(
-				'email'     => FrmChipHelper::truncate( $client_email, 128 ),
-				'full_name' => FrmChipHelper::truncate( $full_name, 128 ),
-			),
+			'client'           => $client,
 			'purchase'         => array(
 				'currency'   => FrmChipHelper::CURRENCY,
 				'timezone'   => apply_filters( 'frm_chip_purchase_timezone', FrmChipHelper::get_timezone() ),

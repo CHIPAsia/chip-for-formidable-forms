@@ -6,8 +6,11 @@
 * Added - Recurring payments, charged from the site on a schedule using a card token stored by CHIP.
 * Added - Payment method selection, configured globally and overridable per form.
 * Added - Runtime resolution of the DuitNow QR and ShopeePay identifier groups against the methods the brand actually has.
+* Added - Phone as a mappable client field, sent to CHIP exactly as the payer typed it.
 * Added - Refunds from the Formidable payments screen.
 * Added - Subscription cancellation, which removes the reusable token and stops future charges.
 * Added - Signature verified server callbacks, with verification against the CHIP API as a fallback.
+* Added - Per-payment locking so the return redirect and the server callback cannot settle the same payment twice.
 * Added - Global settings section for credentials, purchase defaults and the payment method list.
 * Added - Filters: `frm_chip_purchase_params`, `frm_chip_return_url`, `frm_chip_purchase_timezone`, `frm_chip_action_field_options`, `frm_chip_sslverify`.
+* Changed - Validation errors from CHIP are reported with the field and reason instead of a generic HTTP status.

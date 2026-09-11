@@ -37,7 +37,6 @@ This plugin is not distributed through the WordPress.org plugin directory.
 | Secret Key | Your CHIP secret key. Create a dedicated key for each site. |
 | Brand ID | The brand that payments are collected under. |
 | Test mode | Simulates payments. Use a test secret key. |
-| Send receipt | CHIP emails the payer a receipt once the payment completes. |
 | Due strict | Block payment after the due time has passed. |
 | Due strict timing | Minutes until the purchase expires. Defaults to 60. |
 | Allow refunds | Show a refund action on completed CHIP payments. |
@@ -49,8 +48,9 @@ Add a **Collect a Payment** action to your form, select **CHIP** as the gateway,
 then set the amount and currency. The CHIP panel adds:
 
 - **Product name** — shown on the CHIP checkout. Defaults to the form name.
-- **Email**, **First name**, **Last name**, **Address** — map these to form
-  fields so the payer's details reach CHIP.
+- **Email**, **First name**, **Last name**, **Phone**, **Address** — map these to
+  form fields so the payer's details reach CHIP. Phone is sent exactly as the
+  payer typed it.
 - **Reference** — an optional invoice reference. Defaults to the entry ID.
 - **Methods offered on this form** — override the global payment method setting
   for this form only. See below.

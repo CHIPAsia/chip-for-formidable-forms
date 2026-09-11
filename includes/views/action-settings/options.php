@@ -100,6 +100,12 @@ $frm_chip_panel_classes .= ob_get_clean();
 		);
 
 		$frm_chip_text_field(
+			'chip_billing_phone',
+			__( 'Phone', 'chip-for-formidable-forms' ),
+			$form_action->post_content['chip_billing_phone'] ?? ''
+		);
+
+		$frm_chip_text_field(
 			'chip_billing_address',
 			__( 'Address', 'chip-for-formidable-forms' ),
 			$form_action->post_content['chip_billing_address'] ?? ''
