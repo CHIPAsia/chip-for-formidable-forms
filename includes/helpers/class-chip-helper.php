@@ -182,6 +182,11 @@ class FrmChipHelper {
 	/**
 	 * Get the fields that can be mapped in the payment action settings.
 	 *
+	 * The form ID list goes through `frm_trans_action_get_field_options_form_id`,
+	 * the same filter Formidable's own payment actions use. Without it, fields
+	 * inside an embedded form (a Formidable Pro feature) never appear in the
+	 * mapping dropdowns, because Pro widens the ID list through that filter.
+	 *
 	 * @param int $form_id Form ID.
 	 * @return array
 	 */
@@ -189,31 +194,56 @@ class FrmChipHelper {
 		$form_id = absint( $form_id );
 
 		/**
+		 * Filter the form IDs whose fields are offered in the mapping dropdowns.
+		 *
+		 * Pro hooks this to include embedded forms. Kept in step with the core
+		 * payment action so CHIP offers exactly the same fields.
+		 *
+		 * @param int|int[] $form_ids Form ID or IDs.
+		 * @param int       $form_id  The form containing the payment action.
+		 */
+		$form_ids = apply_filters( 'frm_trans_action_get_field_options_form_id', $form_id, $form_id );
+		$form_ids = is_array( $form_ids ) ? $form_ids : array( $form_ids );
+
+		$fields = FrmField::getAll(
+			array(
+				'fi.form_id'  => $form_ids,
+				'fi.type not' => array(
+					'divider',
+					'end_divider',
+					'html',
+					'break',
+					'captcha',
+					'rte',
+					'form',
+					'submit',
+				),
+			),
+			'field_order'
+		);
+
+		// Fields from an embedded form are labelled with their form so a merchant
+		// can tell two identically named fields apart.
+		foreach ( $fields as $field ) {
+			if ( (int) $field->form_id === $form_id ) {
+				continue;
+			}
+
+			$embedded = FrmForm::getName( $field->form_id );
+
+			if ( $embedded ) {
+				/* translators: 1: field name, 2: embedded form name. */
+				$field->name = sprintf( __( '%1$s (%2$s)', 'chip-for-formidable-forms' ), $field->name, $embedded );
+			}
+		}
+
+		/**
 		 * Filter the fields offered in the CHIP payment action settings.
 		 *
 		 * @param array $fields  Field objects.
 		 * @param int   $form_id Form ID.
 		 */
-		return apply_filters(
-			'frm_chip_action_field_options',
-			FrmField::getAll(
-				array(
-					'fi.form_id'  => $form_id,
-					'fi.type not' => array(
-						'divider',
-						'end_divider',
-						'html',
-						'break',
-						'captcha',
-						'rte',
-						'form',
-						'submit',
-					),
-				),
-				'field_order'
-			),
-			$form_id
-		);
+		return apply_filters( 'frm_chip_action_field_options', $fields, $form_id );
 	}
 
 	/**

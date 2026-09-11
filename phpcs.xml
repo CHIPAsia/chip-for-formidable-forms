@@ -33,7 +33,8 @@
 		</properties>
 	</rule>
 
-	<!-- Prefixes -->
+	<!-- Prefixes. Formidable's own hooks are also allowed where this plugin
+	     extends the core payment action, since they are not ours to rename. -->
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
 		<properties>
 			<property name="prefixes" type="array">
@@ -43,6 +44,12 @@
 				<element value="CHIP_FRM"/>
 			</property>
 		</properties>
+	</rule>
+
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound">
+		<!-- This helper deliberately hooks Formidable's own field-options filter
+		     so embedded-form fields are offered, exactly as core does. -->
+		<exclude-pattern>includes/helpers/class-chip-helper.php</exclude-pattern>
 	</rule>
 
 	<!-- Hook callbacks must accept the full filter signature even when a

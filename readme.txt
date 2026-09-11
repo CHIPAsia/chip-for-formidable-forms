@@ -166,6 +166,7 @@ This plugin communicates with the following CHIP API endpoints:
 * One-time and recurring payments through the CHIP hosted checkout.
 * Payment method selection, globally and per form, with runtime resolution of the DuitNow QR and ShopeePay identifier groups.
 * Phone as a mappable client field, sent exactly as the payer typed it.
+* Fields inside an embedded form (Pro) offered in the field mapping.
 * Refunds and subscription cancellation from the Formidable payments screen.
 * Signature verified server callbacks with an API fallback, and per-payment locking so the redirect and callback cannot settle a payment twice.
 

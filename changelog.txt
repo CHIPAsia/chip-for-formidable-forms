@@ -7,6 +7,7 @@
 * Added - Payment method selection, configured globally and overridable per form.
 * Added - Runtime resolution of the DuitNow QR and ShopeePay identifier groups against the methods the brand actually has.
 * Added - Phone as a mappable client field, sent to CHIP exactly as the payer typed it.
+* Added - Fields inside an embedded form (Formidable Pro) are offered in the field mapping, labelled with their form.
 * Added - Refunds from the Formidable payments screen.
 * Added - Subscription cancellation, which removes the reusable token and stops future charges.
 * Added - Signature verified server callbacks, with verification against the CHIP API as a fallback.

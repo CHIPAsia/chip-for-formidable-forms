@@ -55,6 +55,11 @@ then set the amount and currency. The CHIP panel adds:
 - **Methods offered on this form** — override the global payment method setting
   for this form only. See below.
 
+With **Formidable Forms Pro**, the field dropdowns also list fields that live
+inside an embedded form, labelled with the form they come from
+(`Phone (Billing Details)`). This matches what Formidable's own Stripe and
+Square actions offer.
+
 ### Payment method override per form
 
 The **Methods offered on this form** dropdown controls which methods appear at
