@@ -42,7 +42,9 @@ $frm_chip_current = (array) $settings->get( 'whitelist' );
 		<?php esc_html_e( 'Test mode', 'chip-for-formidable-forms' ); ?>
 	</label>
 	<span class="frm_sub_label">
-		<?php esc_html_e( 'Payments are simulated. Use this with a test secret key only.', 'chip-for-formidable-forms' ); ?>
+		<?php
+		esc_html_e( 'Payments are simulated. Use this with a test secret key only.', 'chip-for-formidable-forms' );
+		?>
 	</span>
 </p>
 
@@ -56,13 +58,16 @@ $frm_chip_current = (array) $settings->get( 'whitelist' );
 			<?php esc_html_e( 'Send receipt', 'chip-for-formidable-forms' ); ?>
 		</label>
 		<span class="frm_sub_label">
-			<?php esc_html_e( 'CHIP emails a receipt to the payer once the payment completes.', 'chip-for-formidable-forms' ); ?>
+			<?php
+			esc_html_e( 'CHIP emails a receipt to the payer once the payment completes.', 'chip-for-formidable-forms' );
+			?>
 		</span>
 	</p>
 
 	<p class="frm6">
 		<label>
-			<input type="checkbox" name="frm_chip_due_strict" value="1" <?php checked( $settings->get( 'due_strict' ) ); ?> />
+			<input type="checkbox" name="frm_chip_due_strict" value="1"
+				<?php checked( $settings->get( 'due_strict' ) ); ?> />
 			<?php esc_html_e( 'Due strict', 'chip-for-formidable-forms' ); ?>
 		</label>
 		<span class="frm_sub_label">
@@ -103,7 +108,9 @@ $frm_chip_current = (array) $settings->get( 'whitelist' );
 			<?php esc_html_e( 'Limit the payment methods offered at checkout', 'chip-for-formidable-forms' ); ?>
 		</label>
 		<span class="frm_sub_label">
-			<?php esc_html_e( 'Leave this off to offer every method enabled for your brand.', 'chip-for-formidable-forms' ); ?>
+			<?php
+			esc_html_e( 'Leave this off to offer every method enabled for your brand.', 'chip-for-formidable-forms' );
+			?>
 		</span>
 	</p>
 

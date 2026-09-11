@@ -108,7 +108,10 @@ class FrmChipSettingsController {
 		if ( ! $settings->is_configured() ) {
 			return array(
 				'state'   => 'unconfigured',
-				'message' => __( 'Enter your secret key and brand ID to start accepting payments.', 'chip-for-formidable-forms' ),
+				'message' => __(
+					'Enter your secret key and brand ID to start accepting payments.',
+					'chip-for-formidable-forms'
+				),
 			);
 		}
 
@@ -130,7 +133,9 @@ class FrmChipSettingsController {
 			);
 		}
 
-		$available = isset( $methods['available_payment_methods'] ) ? (array) $methods['available_payment_methods'] : array();
+		$available = isset( $methods['available_payment_methods'] )
+			? (array) $methods['available_payment_methods']
+			: array();
 
 		if ( ! $available ) {
 			$message = __(

@@ -46,7 +46,7 @@ $frm_chip_text_field = function ( $name, $label, $value ) use ( $action_control,
 					<?php
 					printf(
 						/* translators: %s: settings page URL. */
-						esc_html__( 'CHIP is not configured yet. %s to add your credentials.', 'chip-for-formidable-forms' ),
+						esc_html__( 'CHIP is not configured. %s to add credentials.', 'chip-for-formidable-forms' ),
 						'<a href="' . esc_url( FrmChipAppController::get_settings_url() ) . '">'
 						. esc_html__( 'Open CHIP settings', 'chip-for-formidable-forms' )
 						. '</a>'
@@ -105,7 +105,7 @@ $frm_chip_text_field = function ( $name, $label, $value ) use ( $action_control,
 		<p class="frm_sub_label show_chip">
 			<?php
 			esc_html_e(
-				'These values are sent to CHIP with the purchase. Unset values fall back to the entry ID and the form name.',
+				'These values are sent to CHIP with the purchase. Unset values fall back to the entry ID.',
 				'chip-for-formidable-forms'
 			);
 			?>
@@ -115,7 +115,7 @@ $frm_chip_text_field = function ( $name, $label, $value ) use ( $action_control,
 			<p class="frm_sub_label show_chip">
 				<?php
 				esc_html_e(
-					'Recurring payments charge a saved card. CHIP does not renew on its own: Formidable charges the token above.',
+					'Recurring payments charge a saved card. CHIP does not renew on its own: Formidable charges it.',
 					'chip-for-formidable-forms'
 				);
 				?>

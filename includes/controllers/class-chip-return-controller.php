@@ -165,12 +165,15 @@ class FrmChipReturnController {
 	 * @return string
 	 */
 	private static function get_failure_reason( $purchase ) {
-		if ( empty( $purchase['transaction_data']['attempts'] ) || ! is_array( $purchase['transaction_data']['attempts'] ) ) {
+		$attempts = isset( $purchase['transaction_data']['attempts'] )
+			? $purchase['transaction_data']['attempts']
+			: array();
+
+		if ( ! is_array( $attempts ) || ! $attempts ) {
 			return '';
 		}
 
-		$attempts = $purchase['transaction_data']['attempts'];
-		$latest   = reset( $attempts );
+		$latest = reset( $attempts );
 
 		if ( is_array( $latest ) && ! empty( $latest['error']['message'] ) ) {
 			return (string) $latest['error']['message'];

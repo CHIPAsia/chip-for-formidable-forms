@@ -103,6 +103,7 @@ class FrmChipSettlement {
 		$payment_row->update(
 			$payment->id,
 			array(
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- writing meta, not querying it.
 				'meta_value' => array(
 					'chip_status'   => $chip_status,
 					'chip_purchase' => self::summarise( $purchase ),

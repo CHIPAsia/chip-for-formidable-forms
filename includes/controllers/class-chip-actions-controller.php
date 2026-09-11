@@ -132,7 +132,10 @@ class FrmChipActionsController {
 		}
 
 		if ( empty( $purchase['id'] ) || empty( $purchase['checkout_url'] ) ) {
-			$response['error'] = __( 'CHIP did not return a checkout URL for this payment.', 'chip-for-formidable-forms' );
+			$response['error'] = __(
+				'CHIP did not return a checkout URL for this payment.',
+				'chip-for-formidable-forms'
+			);
 			return $response;
 		}
 
@@ -193,10 +196,12 @@ class FrmChipActionsController {
 		);
 
 		if ( ! $payment_id ) {
-			return new WP_Error(
-				'chip_payment_not_recorded',
-				__( 'The payment could not be recorded, so the payer was not sent to CHIP.', 'chip-for-formidable-forms' )
+			$message = __(
+				'The payment could not be recorded, so the payer was not sent to CHIP.',
+				'chip-for-formidable-forms'
 			);
+
+			return new WP_Error( 'chip_payment_not_recorded', $message );
 		}
 
 		if ( $is_recurring ) {
@@ -393,7 +398,7 @@ class FrmChipActionsController {
 
 			if ( $whitelist && ! $card_methods ) {
 				$message = __(
-					'Recurring payments need a card method. Enable Card (Visa, Mastercard, Maestro) in the payment settings.',
+					'Recurring payments need a card method. Enable Card (Visa, Mastercard, Maestro) in the settings.',
 					'chip-for-formidable-forms'
 				);
 

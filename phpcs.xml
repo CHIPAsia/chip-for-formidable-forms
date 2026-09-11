@@ -45,6 +45,12 @@
 		</properties>
 	</rule>
 
+	<!-- Hook callbacks must accept the full filter signature even when a
+	     parameter is not used, so unused parameters are expected here. -->
+	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+		<exclude name="Generic.CodeAnalysis.UnusedFunctionParameter"/>
+	</rule>
+
 	<!-- Line length -->
 	<rule ref="Generic.Files.LineLength">
 		<properties>

@@ -124,7 +124,11 @@ class FrmChipHelper {
 
 		$amount = FrmTransLiteActionsController::prepare_amount(
 			$action->post_content['amount'],
-			compact( 'form', 'entry', 'action' )
+			array(
+				'form'   => $form,
+				'entry'  => $entry,
+				'action' => $action,
+			)
 		);
 
 		return self::to_minor_units( $amount );
@@ -165,7 +169,16 @@ class FrmChipHelper {
 			FrmField::getAll(
 				array(
 					'fi.form_id'  => $form_id,
-					'fi.type not' => array( 'divider', 'end_divider', 'html', 'break', 'captcha', 'rte', 'form', 'submit' ),
+					'fi.type not' => array(
+						'divider',
+						'end_divider',
+						'html',
+						'break',
+						'captcha',
+						'rte',
+						'form',
+						'submit',
+					),
 				),
 				'field_order'
 			),
