@@ -62,19 +62,25 @@ Integrate your Formidable Forms with CHIP as documented in our [API Documentatio
 * MySQL 5.6 or greater, OR MariaDB 10.1 or greater
 * A CHIP account with a Brand ID and Secret Key
 
-= Automatic installation =
+= Where to get it =
 
-Automatic installation is the easiest option—WordPress will handle the file transfer, and you won't need to leave your web browser. To do an automatic install of CHIP for Formidable Forms, log in to your WordPress dashboard, navigate to the Plugins menu, and click "Add New."
-
-In the search field type "CHIP for Formidable Forms," then click "Search Plugins." Once you've found it, click "Install Now," and WordPress will take it from there. Activate the plugin when the installation is complete.
+This plugin is not distributed through the WordPress.org plugin directory. Install
+it from the GitHub repository.
 
 = Manual installation =
 
-The manual installation method requires downloading the CHIP for Formidable Forms plugin and uploading it to your web server via your favorite FTP application. The WordPress Codex contains [instructions on how to do this here](https://wordpress.org/support/article/managing-plugins/#manual-plugin-installation).
+1. Download the plugin zip from the [GitHub repository](https://github.com/CHIPAsia/chip-for-formidable-forms).
+2. In WordPress, go to Plugins → Add New → Upload Plugin.
+3. Choose the zip, click Install Now, then activate the plugin.
+4. Go to Formidable → Global Settings → CHIP and enter your Secret Key and Brand ID.
+
+If you prefer FTP: upload the `chip-for-formidable-forms` folder to
+`wp-content/plugins/`, then activate it from the Plugins screen.
 
 = Updating =
 
-Automatic updates should work smoothly; we still recommend you back up your site before updating.
+Replace the plugin folder with the newer version and reactivate if prompted. Back
+up your site before updating.
 
 = After activation =
 

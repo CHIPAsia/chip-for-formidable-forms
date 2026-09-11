@@ -16,7 +16,10 @@ action.
 
 ## Installation
 
-1. Download the latest release zip.
+This plugin is not distributed through the WordPress.org plugin directory.
+
+1. Download the plugin from the
+   [GitHub repository](https://github.com/CHIPAsia/chip-for-formidable-forms).
 2. In WordPress, go to **Plugins → Add New → Upload Plugin**.
 3. Choose the zip, install, and activate.
 4. Go to **Formidable → Global Settings → CHIP** and enter your secret key and

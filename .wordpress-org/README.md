@@ -1,6 +1,8 @@
 # WordPress.org Plugin Directory Assets
 
-This directory contains images displayed on the [WordPress.org plugin page](https://wordpress.org/plugins/chip-for-formidable-forms/).
+This directory holds the images for the WordPress.org plugin page. They are
+prepared and ready, but **the plugin is not published on WordPress.org yet**, so
+nothing here is live.
 
 ## File naming conventions
 
@@ -15,8 +17,9 @@ This directory contains images displayed on the [WordPress.org plugin page](http
 > **Do not delete or rename files here** unless you also update the
 > `== Screenshots ==` section in `readme.txt`.
 
-These files are synced to `https://plugins.svn.wordpress.org/chip-for-formidable-forms/assets/`
-by the deploy workflow.
+These files are ready for the WordPress.org plugin page assets directory if the
+plugin is ever published there. They are not live: the plugin is currently
+distributed from GitHub, and there is no automated deploy workflow.
 
 ## Screenshot contents
 

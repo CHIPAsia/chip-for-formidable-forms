@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: CHIP for Formidable Forms
- * Plugin URI: https://wordpress.org/plugins/chip-for-formidable-forms/
+ * Plugin URI: https://github.com/CHIPAsia/chip-for-formidable-forms
  * Description: Accept FPX, cards, e-wallets and DuitNow QR payments in Formidable Forms with CHIP.
  * Version: 1.0.0
  * Author: Chip In Sdn Bhd
