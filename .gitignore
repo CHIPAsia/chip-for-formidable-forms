@@ -1,0 +1,16 @@
+# Build artifacts
+node_modules/
+vendor/
+composer.lock
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Local environment
+.wp-env.json
+docker-compose.yml
+Dockerfile

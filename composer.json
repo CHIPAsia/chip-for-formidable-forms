@@ -1,0 +1,21 @@
+{
+	"name": "chipasia/chip-for-formidable-forms",
+	"version": "1.0.0",
+	"description": "CHIP payment gateway for Formidable Forms.",
+	"license": "GPL-3.0-or-later",
+	"require-dev": {
+		"squizlabs/php_codesniffer": "^3.7",
+		"wp-coding-standards/wpcs": "^3.0",
+		"phpcompatibility/phpcompatibility-wp": "^2.1",
+		"dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
+	},
+	"scripts": {
+		"lint": "phpcs --standard=phpcs.xml .",
+		"lint:fix": "phpcbf --standard=phpcs.xml ."
+	}
+}

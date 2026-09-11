@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<ruleset name="CHIP for Formidable Forms">
+	<description>PHPCS ruleset for the CHIP for Formidable Forms plugin.</description>
+
+	<!-- What to scan -->
+	<file>.</file>
+
+	<!-- Only scan PHP files -->
+	<arg name="extensions" value="php"/>
+
+	<!-- Exclude paths -->
+	<exclude-pattern>/vendor/*</exclude-pattern>
+	<exclude-pattern>/node_modules/*</exclude-pattern>
+	<exclude-pattern>/tests/*</exclude-pattern>
+
+	<!-- Use WordPress coding standards -->
+	<rule ref="WordPress">
+		<!-- The plugin ships a single short file of inline admin markup; class
+		     file naming and template indentation rules add noise without value. -->
+		<exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+	</rule>
+
+	<!-- Set minimum supported versions -->
+	<config name="minimum_supported_wp_version" value="6.3"/>
+	<config name="testVersion" value="7.4-8.5"/>
+
+	<!-- Text domain -->
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="chip-for-formidable-forms"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- Prefixes -->
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="frm_chip"/>
+				<element value="FrmChip"/>
+				<element value="FRM_CHIP"/>
+				<element value="CHIP_FRM"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- Line length -->
+	<rule ref="Generic.Files.LineLength">
+		<properties>
+			<property name="lineLimit" value="120"/>
+			<property name="absoluteLineLimit" value="0"/>
+		</properties>
+	</rule>
+</ruleset>
