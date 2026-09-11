@@ -119,6 +119,22 @@ stops all future charges.
 Recurring payments require a card method, because only cards can be charged
 without the payer present.
 
+### Managing subscriptions
+
+**Formidable → Payments** shows each CHIP subscription's next charge, any retry
+in progress, and the reason a renewal failed.
+
+If a renewal fails, it is retried on days 3, 5 and 7 after the due date. When a
+renewal has failed but is still being retried, **Retry now** charges the saved
+card immediately instead of waiting for the next scheduled attempt.
+
+If CHIP rejects the stored card itself — it expired, was cancelled, or was
+deleted — the subscription is marked **failed** straight away rather than
+retrying a card that cannot work, and the reason is shown on the payment.
+
+Cancelling a subscription removes the stored token, so no further charges can be
+made, and honours the period already paid for.
+
 ## Refunds
 
 Refunds are handled from **Formidable → Payments**. Open a completed CHIP payment

@@ -96,6 +96,8 @@ class FrmChipHooksController {
 		add_action( 'admin_footer', 'FrmChipActionsController::print_gateway_icon' );
 
 		// Refund support on the payments screen.
-		add_action( 'frm_pay_chip_sidebar', 'FrmChipPaymentsController::sidebar_actions' );
+		// The payments sidebar carries the payment's own actions plus the
+		// renewal state of the subscription it belongs to.
+		FrmChipSubscriptionsController::load_hooks();
 	}
 }
