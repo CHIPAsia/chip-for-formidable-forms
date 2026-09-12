@@ -40,6 +40,13 @@ $frm_chip_status_labels = array(
 			?>
 		</p>
 
+		<?php
+		// A retry performed from this screen reloads the page, so the outcome is
+		// announced by that navigation. This region exists so the sidebar's
+		// in-place retry has somewhere to report its result to assistive tech.
+		?>
+		<div class="frm_chip_live_region" aria-live="polite" role="status"></div>
+
 		<?php if ( ! $frm_chip_rows ) { ?>
 			<div class="frm_no_items" style="margin-top:20px;">
 				<?php esc_html_e( 'No CHIP subscriptions yet.', 'chip-for-formidable-forms' ); ?>
@@ -112,7 +119,11 @@ $frm_chip_status_labels = array(
 							: ucfirst( str_replace( '_', ' ', (string) $frm_chip_sub->status ) );
 						?>
 						<tr>
-							<td><?php echo esc_html( $frm_chip_label ); ?></td>
+							<?php
+							// The status is the row's header: it identifies the row for a
+							// screen reader, so a cell read out of context still makes sense.
+							?>
+							<th scope="row"><?php echo esc_html( $frm_chip_label ); ?></th>
 							<td>
 								<?php if ( $frm_chip_entry_url ) { ?>
 									<a href="<?php echo esc_url( $frm_chip_entry_url ); ?>">
@@ -178,7 +189,33 @@ $frm_chip_status_labels = array(
 										'frm_chip_retry_' . (int) $frm_chip_sub->id
 									);
 									?>
-									<a href="<?php echo esc_url( $frm_chip_retry_url ); ?>" class="button button-small">
+									<?php
+									// Every row's link reads "Retry now", so without a
+									// distinguishing name a screen reader announces the
+									// same label for each row and the merchant cannot
+									// tell which subscription they are about to charge.
+									// The payer and status can repeat across rows (the
+									// same payer with two active subscriptions), so the
+									// subscription id is what makes it unique.
+									$frm_chip_who = $frm_chip_entry && $frm_chip_entry->name
+										? $frm_chip_entry->name
+										: sprintf(
+											/* translators: %d: entry id. */
+											__( 'entry %d', 'chip-for-formidable-forms' ),
+											$frm_chip_entry ? (int) $frm_chip_entry->id : 0
+										);
+
+									$frm_chip_retry_label = sprintf(
+										/* translators: 1: payer name, 2: status, 3: subscription id. */
+										__( 'Retry now for %1$s (%2$s), sub %3$d', 'chip-for-formidable-forms' ),
+										$frm_chip_who,
+										$frm_chip_label,
+										(int) $frm_chip_sub->id
+									);
+									?>
+									<a href="<?php echo esc_url( $frm_chip_retry_url ); ?>"
+										class="button button-small"
+										aria-label="<?php echo esc_attr( $frm_chip_retry_label ); ?>">
 										<?php esc_html_e( 'Retry now', 'chip-for-formidable-forms' ); ?>
 									</a>
 								<?php } else { ?>

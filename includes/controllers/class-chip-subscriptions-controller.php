@@ -120,9 +120,11 @@ class FrmChipSubscriptionsController {
 			return;
 		}
 
-		$can_retry = 'active' === (string) $subscription->status
-			&& (int) $subscription->id > 0
-			&& self::get_failures( $subscription ) > 0;
+		// A manual retry is always offered, matching the subscriptions screen: an
+		// admin may need to take a payment early, or re-run one that the schedule
+		// has not reached yet. Only a subscription the payer has ended is excluded,
+		// because charging it would take money they have asked to stop.
+		$can_retry = ! in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true );
 
 		?>
 		<div class="misc-pub-section">
@@ -131,13 +133,36 @@ class FrmChipSubscriptionsController {
 				<?php echo esc_html( $summary ); ?>
 			</span>
 			<?php if ( $can_retry ) { ?>
-				<a href="#"
-					class="frm_chip_retry_renewal"
+				<?php
+				// A button, not a link: this performs an action on the current
+				// page rather than navigating, and the label names the payer so a
+				// screen reader does not announce the same "Retry now" every time.
+				$frm_chip_label = $summary
+					? sprintf(
+						/* translators: %s: the renewal summary, e.g. "Renews 19 Sep 2026". */
+						__( 'Retry now. %s', 'chip-for-formidable-forms' ),
+						$summary
+					)
+					: __( 'Retry now', 'chip-for-formidable-forms' );
+
+				$frm_chip_failed = __( 'The retry could not be sent. Please try again.', 'chip-for-formidable-forms' );
+				?>
+				<button type="button"
+					class="frm_chip_retry_renewal button button-small"
 					data-sub="<?php echo absint( $subscription->id ); ?>"
 					data-nonce="<?php echo esc_attr( wp_create_nonce( 'frm_chip_retry_renewal' ) ); ?>"
+					data-working="<?php echo esc_attr__( 'Working…', 'chip-for-formidable-forms' ); ?>"
+					data-failed="<?php echo esc_attr( $frm_chip_failed ); ?>"
+					aria-label="<?php echo esc_attr( $frm_chip_label ); ?>"
 					style="margin-left:6px;">
 					<?php esc_html_e( 'Retry now', 'chip-for-formidable-forms' ); ?>
-				</a>
+				</button>
+				<?php
+				// The AJAX result is inserted next to the button, which is silent
+				// for a screen reader. Give it a region to announce into. The list
+				// screen ships its own; this one is for the payments sidebar.
+				?>
+				<div class="frm_chip_live_region screen-reader-text" aria-live="polite" role="status"></div>
 			<?php } ?>
 		</div>
 		<?php
