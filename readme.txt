@@ -154,9 +154,10 @@ This plugin communicates with the following CHIP API endpoints:
 
 1. Global configuration - Enter your Brand ID and Secret Key in the plugin settings to connect with CHIP.
 2. Payment methods - Choose which methods to offer globally, or override them per form.
-3. Form with CHIP payment - The CHIP panel on a Collect a Payment action, with product name and field mapping.
+3. Form with CHIP payment - The CHIP panel on a Collect a Payment action, with product name, field mapping and per-form payment methods.
 4. A form on the front end with CHIP selected as its payment gateway.
-5. Payments screen - View CHIP payments and process a refund from Formidable → Payments.
+5. Payments screen - View CHIP payments, filter by form, and process a refund from Formidable → Payments.
+6. Subscriptions screen - See each subscription's renewal state, how many charge attempts remain, and retry a payment. Recurring payments are charged from your site, with automatic retries on days 3, 5 and 7 after a failed charge.
 
 == Changelog ==
 
