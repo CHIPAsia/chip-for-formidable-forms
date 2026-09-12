@@ -665,6 +665,7 @@ class FrmChipRenewals {
 		$code = $error->get_error_code();
 		$data = $error->get_error_data();
 		$body = isset( $data['body'] ) ? $data['body'] : array();
+		$http = isset( $data['status'] ) ? (int) $data['status'] : 0;
 
 		FrmChipHelper::log(
 			'Renewal charge failed',
@@ -674,6 +675,23 @@ class FrmChipRenewals {
 				'message' => $error->get_error_message(),
 			)
 		);
+
+		// An outage is not a card problem: the charge was never attempted. Burning
+		// one of the four retry slots here would fail a healthy subscription after
+		// four outages in two weeks, and advancing the bill date would push the
+		// real charge further out. Leave it due so the next run tries again.
+		if ( self::is_transient_failure( $code, $http ) ) {
+			FrmChipHelper::log(
+				'Renewal deferred: CHIP unavailable',
+				array(
+					'sub'    => $subscription->id,
+					'code'   => $code,
+					'status' => $http,
+				)
+			);
+
+			return 'skipped';
+		}
 
 		if ( self::is_hard_decline( $error, $body ) ) {
 			// The card is unusable. Retrying cannot help, so stop and let the
@@ -698,6 +716,40 @@ class FrmChipRenewals {
 		self::schedule_retry( $subscription, $attempts );
 
 		return 'skipped';
+	}
+
+	/**
+	 * Whether a failure is CHIP or the network rather than the payer's card.
+	 *
+	 * Nothing was charged in these cases, so the attempt is not counted and the
+	 * subscription stays due. The retry limits still apply to real declines, which
+	 * is what they are for.
+	 *
+	 * A transport failure carries no HTTP status at all. A 5xx or a 429 from CHIP
+	 * means the request was refused or the service was unavailable, not that the
+	 * card was declined.
+	 *
+	 * @param string $code WP_Error code.
+	 * @param int    $http HTTP status, 0 when the request never completed.
+	 * @return bool
+	 */
+	private static function is_transient_failure( $code, $http ) {
+		// The request never got a response: timeout, DNS, connection reset.
+		if ( 'http_request_failed' === $code ) {
+			return true;
+		}
+
+		if ( $http >= 500 ) {
+			return true;
+		}
+
+		if ( 429 === $http ) {
+			return true;
+		}
+
+		// A response that could not be parsed may be a truncated body or an
+		// intermediary's error page, so it is not evidence about the card.
+		return 'chip_invalid_response' === $code;
 	}
 
 	/**
