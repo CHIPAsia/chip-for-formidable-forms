@@ -122,11 +122,68 @@ class FrmChipSettlement {
 			return false;
 		}
 
+		// A purchase paid for less than the order is a partial payment, not a
+		// completed one. It is recorded as held rather than complete so the order
+		// is not treated as fulfilled, and the merchant can see why.
+		if ( self::is_paid( $chip_status ) && ! self::amount_matches( $purchase, $payment ) ) {
+			$new_status             = 'pending';
+			$payment->chip_mismatch = true;
+
+			FrmChipHelper::log(
+				'Underpaid purchase held',
+				array(
+					'payment'  => $payment->id,
+					'expected' => $payment->amount,
+					'paid'     => isset( $purchase['purchase']['total'] ) ? $purchase['purchase']['total'] : '',
+				)
+			);
+		}
+
 		// change_payment_status persists the status and fires the payment status
 		// triggers, which is what lets merchant emails react to the outcome.
 		FrmTransLitePaymentsController::change_payment_status( $payment, $new_status );
 
 		return true;
+	}
+
+	/**
+	 * Whether the amount CHIP reports matches the amount this site asked for.
+	 *
+	 * The purchase is created with the amount calculated here, so a lower total
+	 * means the payer paid less than the order. CHIP reports the purchase total
+	 * in minor units (RM 10.00 is 1000), while the payment row holds a decimal
+	 * string, so only the expected side is converted.
+	 *
+	 * A missing or unreadable total is treated as a match: this is a safety net
+	 * against a tampered or partial amount, not a second source of truth, and
+	 * refusing to settle on absent data would strand legitimate payments.
+	 *
+	 * @param array    $purchase Decoded CHIP purchase.
+	 * @param stdClass $payment  Formidable payment row.
+	 * @return bool
+	 */
+	private static function amount_matches( $purchase, $payment ) {
+		if ( ! isset( $purchase['purchase']['total'] ) || '' === $purchase['purchase']['total'] ) {
+			return true;
+		}
+
+		if ( ! is_numeric( $purchase['purchase']['total'] ) ) {
+			return true;
+		}
+
+		// Already minor units, so this is a cast rather than a conversion.
+		$paid = (int) round( (float) $purchase['purchase']['total'] );
+
+		if ( ! is_numeric( $payment->amount ) ) {
+			return true;
+		}
+
+		$expected = FrmChipHelper::to_minor_units( $payment->amount );
+
+		// A paid total below the order is a partial payment. Paying more is not
+		// blocked: an overpayment is not a shortfall, and the payer may have been
+		// stepped up by 3-D Secure.
+		return $paid >= $expected;
 	}
 
 	/**
