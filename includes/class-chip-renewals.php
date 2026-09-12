@@ -41,6 +41,34 @@ class FrmChipRenewals {
 	const RETRY_OFFSETS = array( 0, 3, 5, 7 );
 
 	/**
+	 * Consecutive failed attempts before automated retrying stops.
+	 *
+	 * Stripe stops after 10 consecutive declines. Going further rarely recovers
+	 * anything and starts to look like aggressive retrying to the issuer.
+	 *
+	 * @var int
+	 */
+	const MAX_CONSECUTIVE_ATTEMPTS = 10;
+
+	/**
+	 * Rolling window for the card network retry cap, in days.
+	 *
+	 * @var int
+	 */
+	const NETWORK_WINDOW_DAYS = 30;
+
+	/**
+	 * Total charge attempts allowed against one card within the window.
+	 *
+	 * Visa and Mastercard both cap retries at 15 attempts per card per 30 days
+	 * and levy penalty fees above that, so the cap is enforced rather than left
+	 * to the merchant to remember. A manual retry still has to fit inside it.
+	 *
+	 * @var int
+	 */
+	const NETWORK_MAX_ATTEMPTS = 15;
+
+	/**
 	 * CHIP error codes that mean the token is dead, not that this attempt failed.
 	 *
 	 * @var string[]
@@ -198,6 +226,149 @@ class FrmChipRenewals {
 		} finally {
 			self::release_charge_lock( $subscription );
 		}
+	}
+
+	/**
+	 * Whether a subscription may be attempted right now.
+	 *
+	 * Enforces two limits:
+	 *
+	 * 1. The card network cap. Visa and Mastercard both allow 15 charge attempts
+	 *    per card per 30 days and charge penalty fees above it, so attempts are
+	 *    counted across all of a subscription's payments in the window.
+	 * 2. A consecutive-failure ceiling, matching Stripe's 10, so a permanently
+	 *    dead card is not hammered indefinitely.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return true|WP_Error True when allowed, otherwise the reason.
+	 */
+	public static function check_retry_allowed( $subscription ) {
+		$meta = self::get_meta( $subscription );
+
+		$consecutive = isset( $meta['chip_renewal_consecutive_failures'] )
+			? (int) $meta['chip_renewal_consecutive_failures']
+			: 0;
+
+		if ( $consecutive >= self::MAX_CONSECUTIVE_ATTEMPTS ) {
+			return new WP_Error(
+				'chip_retry_limit_reached',
+				sprintf(
+					/* translators: %d: number of consecutive failed attempts. */
+					__(
+						'This card has failed %d times in a row. Update the card before trying again.',
+						'chip-for-formidable-forms'
+					),
+					$consecutive
+				)
+			);
+		}
+
+		$recent = self::count_recent_attempts( $subscription );
+
+		if ( $recent >= self::NETWORK_MAX_ATTEMPTS ) {
+			/* translators: 1: charges already attempted, 2: window in days. */
+			$message = __(
+				'%1$d charges were already attempted on this card in the last %2$d days, the card network limit.',
+				'chip-for-formidable-forms'
+			);
+
+			return new WP_Error(
+				'chip_retry_network_limit',
+				sprintf(
+					/* translators: 1: charges already attempted, 2: window in days. */
+					$message,
+					$recent,
+					self::NETWORK_WINDOW_DAYS
+				)
+			);
+		}
+
+		return true;
+	}
+
+	/**
+	 * Count charge attempts recorded against a subscription inside the window.
+	 *
+	 * Counted from the recorded payments rather than a stored counter, so the
+	 * figure cannot drift from what actually happened.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return int
+	 */
+	public static function count_recent_attempts( $subscription ) {
+		global $wpdb;
+
+		$since = gmdate( 'Y-m-d H:i:s', strtotime( '-' . self::NETWORK_WINDOW_DAYS . ' days' ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COUNT(*) FROM ' . $wpdb->prefix . 'frm_payments
+				 WHERE paysys = %s AND sub_id = %s AND created_at >= %s',
+				FrmChipHooksController::GATEWAY,
+				(string) $subscription->id,
+				$since
+			)
+		);
+	}
+
+	/**
+	 * How many attempts a subscription has left in the network window.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return int
+	 */
+	public static function remaining_attempts( $subscription ) {
+		return max( 0, self::NETWORK_MAX_ATTEMPTS - self::count_recent_attempts( $subscription ) );
+	}
+
+	/**
+	 * Charge a subscription on the merchant's instruction, ignoring the schedule.
+	 *
+	 * Distinct from the cron path: a merchant may want to charge a subscription
+	 * that is not yet due, or one that has already been marked failed because
+	 * the payer topped the card up late. The safety limits still apply, so this
+	 * cannot be used to hammer a card.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string|WP_Error charged|failed|skipped, or the reason it may not run.
+	 */
+	public static function charge_manually( $subscription ) {
+		$allowed = self::check_retry_allowed( $subscription );
+
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
+		// A manual attempt is a fresh decision by the merchant, so a previously
+		// failed subscription is put back into rotation before charging.
+		if ( 'failed' === (string) $subscription->status ) {
+			self::reactivate( $subscription );
+		}
+
+		return self::charge( $subscription );
+	}
+
+	/**
+	 * Put a failed subscription back into rotation.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return void
+	 */
+	private static function reactivate( $subscription ) {
+		$meta = self::get_meta( $subscription );
+
+		unset( $meta['chip_renewal_reason'] );
+		unset( $meta['chip_renewal_failed_at'] );
+
+		self::update_subscription(
+			$subscription,
+			array(
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- column on frm_subscriptions, not postmeta.
+				'meta_value' => $meta,
+				'status'     => 'active',
+			)
+		);
 	}
 
 	/**
@@ -485,8 +656,9 @@ class FrmChipRenewals {
 	private static function record_failure( $subscription ) {
 		$meta = self::get_meta( $subscription );
 
-		$meta['chip_renewal_failures'] = self::count_failures( $subscription ) + 1;
-		$meta['chip_last_failure']     = current_time( 'mysql', 1 );
+		$meta['chip_renewal_failures']             = self::count_failures( $subscription ) + 1;
+		$meta['chip_renewal_consecutive_failures'] = self::count_consecutive_failures( $subscription ) + 1;
+		$meta['chip_last_failure']                 = current_time( 'mysql', 1 );
 
 		self::update_subscription(
 			$subscription,
@@ -496,6 +668,20 @@ class FrmChipRenewals {
 				'next_bill_date' => self::next_retry_date( self::count_failures( $subscription ) + 1 ),
 			)
 		);
+	}
+
+	/**
+	 * Consecutive failed attempts, reset by any successful charge.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return int
+	 */
+	private static function count_consecutive_failures( $subscription ) {
+		$meta = self::get_meta( $subscription );
+
+		return isset( $meta['chip_renewal_consecutive_failures'] )
+			? (int) $meta['chip_renewal_consecutive_failures']
+			: 0;
 	}
 
 	/**
@@ -602,8 +788,9 @@ class FrmChipRenewals {
 
 		$meta = self::get_meta( $subscription );
 
-		// A successful charge clears the failure counter.
+		// A successful charge clears the failure counters.
 		unset( $meta['chip_renewal_failures'] );
+		unset( $meta['chip_renewal_consecutive_failures'] );
 		unset( $meta['chip_last_failure'] );
 
 		self::update_subscription(
@@ -659,6 +846,321 @@ class FrmChipRenewals {
 		}
 
 		return null;
+	}
+
+	/**
+	 * The stable link a payer is emailed, and where a card update begins.
+	 *
+	 * It does not create a checkout by itself: a checkout is single-use, so
+	 * creating one here would waste it the moment the mail is sent and a payer
+	 * returning later would land on an already-consumed purchase. The return
+	 * handler opens a fresh checkout on each visit instead.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string
+	 */
+	public static function card_update_url( $subscription ) {
+		return add_query_arg(
+			array(
+				'frmchip_card' => (int) $subscription->id,
+				'frmchip_key'  => self::card_update_key( $subscription ),
+			),
+			home_url( '/' )
+		);
+	}
+
+	/**
+	 * The purchase a card update link last created, if any.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string
+	 */
+	public static function get_card_update_purchase( $subscription ) {
+		$meta = self::get_meta( $subscription );
+
+		return isset( $meta['chip_card_update_purchase'] )
+			? sanitize_text_field( (string) $meta['chip_card_update_purchase'] )
+			: '';
+	}
+
+	/**
+	 * Whether a card update checkout has actually been completed.
+	 *
+	 * Asked of CHIP rather than inferred from the return URL, because CHIP only
+	 * echoes back the parameters set at creation, and the purchase does not
+	 * exist until after it is created.
+	 *
+	 * @param string $purchase_id Purchase ID.
+	 * @return bool
+	 */
+	public static function card_update_is_complete( $purchase_id ) {
+		$api = FrmChipAppController::api();
+
+		if ( is_wp_error( $api ) ) {
+			return false;
+		}
+
+		$purchase = $api->get_purchase( $purchase_id );
+
+		if ( is_wp_error( $purchase ) ) {
+			return false;
+		}
+
+		$status = isset( $purchase['status'] ) ? (string) $purchase['status'] : '';
+
+		// skip_capture means an authorised card comes back preauthorized.
+		return in_array( $status, array( 'paid', 'preauthorized' ), true );
+	}
+
+	/**
+	 * Create a checkout the payer can use to hand over a new card.
+	 *
+	 * Used when a card dies (expired or cancelled). The token cannot be fixed,
+	 * so the only way to keep the subscription alive is a fresh card. The
+	 * purchase is zero-value with `skip_capture`, which CHIP documents as
+	 * saving a card without a financial transaction.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string|WP_Error Checkout URL, or the reason it could not be made.
+	 */
+	public static function create_card_update_link( $subscription ) {
+		$settings = FrmChipSettings::get_settings();
+
+		if ( ! $settings->is_configured() ) {
+			return new WP_Error(
+				'chip_not_configured',
+				__( 'CHIP is not configured, so a card update link cannot be created.', 'chip-for-formidable-forms' )
+			);
+		}
+
+		$api = FrmChipAppController::api();
+
+		if ( is_wp_error( $api ) ) {
+			return $api;
+		}
+
+		$entry  = FrmEntry::getOne( (int) $subscription->item_id, true );
+		$form   = $entry ? FrmForm::getOne( $entry->form_id ) : null;
+		$action = ( $entry && $form ) ? self::get_action( $subscription, $form ) : null;
+
+		$client = array();
+
+		if ( $action && $entry ) {
+			$client = self::build_client( $action, $entry );
+		}
+
+		if ( empty( $client['email'] ) ) {
+			$client['email'] = self::fallback_email();
+		}
+
+		if ( empty( $client['full_name'] ) ) {
+			$client['full_name'] = FrmChipHelper::truncate( self::fallback_name( $subscription ), 128 );
+		}
+
+		$url = add_query_arg(
+			array(
+				'frmchip_card' => (int) $subscription->id,
+				'frmchip_key'  => self::card_update_key( $subscription ),
+			),
+			home_url( '/' )
+		);
+
+		// The redirect must carry the purchase, because the return leg is what
+		// verifies and stores the new card. The purchase does not exist until
+		// after creation, so the URL is rebuilt with it.
+		$params = array(
+			'brand_id'                 => (string) $settings->get( 'brand_id' ),
+			'creator_agent'            => 'Formidable Forms: ' . FRM_CHIP_MODULE_VERSION,
+			'platform'                 => 'formidableforms',
+			'reference'                => FrmChipHelper::truncate( 'card-update-' . (int) $subscription->id, 128 ),
+			'send_receipt'             => false,
+			'force_recurring'          => true,
+			'skip_capture'             => true,
+			'payment_method_whitelist' => FrmChipPaymentMethods::CARD_GROUP,
+			'client'                   => $client,
+			'purchase'                 => array(
+				'currency' => FrmChipHelper::CURRENCY,
+				'timezone' => FrmChipHelper::get_timezone(),
+				'products' => array(
+					array(
+						'name'     => FrmChipHelper::truncate(
+							__( 'Update payment card', 'chip-for-formidable-forms' ),
+							256
+						),
+						'price'    => 0,
+						'quantity' => 1,
+					),
+				),
+			),
+		);
+
+		/**
+		 * Filter the payload for a payer's card update checkout.
+		 *
+		 * @param array    $params       Purchase payload.
+		 * @param stdClass $subscription Subscription row.
+		 */
+		$params = apply_filters( 'frm_chip_card_update_params', $params, $subscription );
+
+		// CHIP requires redirects at creation, so the purchase is created before
+		// the URL can name it. Create it first with no redirect, then... — CHIP
+		// does not allow updating redirects, so the purchase is created once with
+		// a redirect that carries a reference we control: the subscription and
+		// its key. The return handler then looks the purchase up from CHIP.
+		$params['success_redirect'] = $url;
+		$params['failure_redirect'] = $url;
+		$params['cancel_redirect']  = $url;
+
+		$purchase = $api->create_purchase( $params );
+
+		if ( is_wp_error( $purchase ) ) {
+			return $purchase;
+		}
+
+		// Remember which subscription this checkout belongs to, so the return
+		// handler knows what to re-tokenise.
+		$meta = self::get_meta( $subscription );
+
+		$meta['chip_card_update_purchase'] = (string) $purchase['id'];
+
+		// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- column on frm_subscriptions, not postmeta.
+		self::update_subscription( $subscription, array( 'meta_value' => $meta ) );
+
+		if ( empty( $purchase['checkout_url'] ) ) {
+			return new WP_Error(
+				'chip_no_checkout_url',
+				__( 'CHIP did not return a checkout URL.', 'chip-for-formidable-forms' )
+			);
+		}
+
+		return (string) $purchase['checkout_url'];
+	}
+
+	/**
+	 * Key that authorises a card update, without needing the payer to log in.
+	 *
+	 * Derived from the site's own secret so it cannot be guessed, and stable so
+	 * the same link keeps working while the card is still broken.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string
+	 */
+	public static function card_update_key( $subscription ) {
+		return substr(
+			wp_hash( 'frm_chip_card_update|' . (int) $subscription->id . '|' . (string) $subscription->sub_id ),
+			0,
+			32
+		);
+	}
+
+	/**
+	 * Whether a card update request is authorised.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @param string   $key          Supplied key.
+	 * @return bool
+	 */
+	public static function verify_card_update_key( $subscription, $key ) {
+		$expected = self::card_update_key( $subscription );
+
+		return is_string( $key ) && hash_equals( $expected, $key );
+	}
+
+	/**
+	 * The subscription a card update request refers to.
+	 *
+	 * @param int    $subscription_id Subscription ID.
+	 * @param string $key             Supplied key.
+	 * @return stdClass|WP_Error
+	 */
+	public static function resolve_card_update_request( $subscription_id, $key ) {
+		$subscriptions = new FrmTransLiteSubscription();
+		$subscription  = $subscriptions->get_one( (int) $subscription_id );
+
+		if ( ! $subscription || FrmChipHooksController::GATEWAY !== $subscription->paysys ) {
+			return new WP_Error(
+				'chip_subscription_not_found',
+				__( 'That subscription could not be found.', 'chip-for-formidable-forms' )
+			);
+		}
+
+		if ( ! self::verify_card_update_key( $subscription, $key ) ) {
+			return new WP_Error(
+				'chip_invalid_key',
+				__( 'This card update link is not valid.', 'chip-for-formidable-forms' )
+			);
+		}
+
+		return $subscription;
+	}
+
+	/**
+	 * Replace a subscription's token after the payer supplied a new card.
+	 *
+	 * The stored token is the purchase that holds the card, so the new purchase
+	 * becomes the subscription's token and the old one is discarded.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @param string   $purchase_id  Purchase that captured the new card.
+	 * @return true|WP_Error
+	 */
+	public static function replace_token( $subscription, $purchase_id ) {
+		$api = FrmChipAppController::api();
+
+		if ( is_wp_error( $api ) ) {
+			return $api;
+		}
+
+		$purchase = $api->get_purchase( $purchase_id );
+
+		if ( is_wp_error( $purchase ) ) {
+			return $purchase;
+		}
+
+		if ( empty( $purchase['is_recurring_token'] ) ) {
+			return new WP_Error(
+				'chip_no_token',
+				__( 'That card could not be stored. Please try again.', 'chip-for-formidable-forms' )
+			);
+		}
+
+		$previous = (string) $subscription->sub_id;
+
+		$meta = self::get_meta( $subscription );
+
+		unset( $meta['chip_card_update_purchase'] );
+		unset( $meta['chip_renewal_reason'] );
+		unset( $meta['chip_renewal_failed_at'] );
+		unset( $meta['chip_renewal_failures'] );
+		unset( $meta['chip_renewal_consecutive_failures'] );
+
+		self::update_subscription(
+			$subscription,
+			array(
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- column on frm_subscriptions, not postmeta.
+				'meta_value' => $meta,
+				// A card update is also the payer's intent to continue.
+				'status'     => 'active',
+				'sub_id'     => (string) $purchase_id,
+			)
+		);
+
+		// Release the old token so the dead card cannot be charged again.
+		if ( '' !== $previous && $previous !== (string) $purchase_id ) {
+			$api->delete_recurring_token( $previous );
+		}
+
+		/**
+		 * Fires when a payer has supplied a new card for a subscription.
+		 *
+		 * @param stdClass $subscription Subscription row.
+		 * @param string   $purchase_id  Purchase holding the new token.
+		 */
+		do_action( 'frm_chip_subscription_card_updated', $subscription, $purchase_id );
+
+		FrmChipHelper::log( 'Subscription card updated', array( 'sub' => $subscription->id ) );
+
+		return true;
 	}
 
 	/**

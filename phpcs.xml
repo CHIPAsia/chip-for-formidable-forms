@@ -33,6 +33,18 @@
 		</properties>
 	</rule>
 
+	<rule ref="WordPress.WP.Capabilities">
+		<properties>
+			<!-- Formidable registers these; they are not ours to rename. -->
+			<property name="custom_capabilities" type="array">
+				<element value="frm_view_entries"/>
+				<element value="frm_change_settings"/>
+				<element value="frm_view_forms"/>
+				<element value="frm_edit_entries"/>
+			</property>
+		</properties>
+	</rule>
+
 	<!-- Prefixes. Formidable's own hooks are also allowed where this plugin
 	     extends the core payment action, since they are not ours to rename. -->
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">

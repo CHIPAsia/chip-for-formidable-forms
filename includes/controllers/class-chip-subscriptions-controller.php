@@ -18,6 +18,13 @@ defined( 'ABSPATH' ) || die();
 class FrmChipSubscriptionsController {
 
 	/**
+	 * Admin page slug for the CHIP subscriptions screen.
+	 *
+	 * @var string
+	 */
+	const PAGE_SLUG = 'formidable-chip-subscriptions';
+
+	/**
 	 * Register the subscription screen additions.
 	 *
 	 * @return void
@@ -39,6 +46,9 @@ class FrmChipSubscriptionsController {
 		// Merchant-triggered renewal retry.
 		add_action( 'wp_ajax_frm_chip_retry_renewal', array( __CLASS__, 'maybe_handle_retry' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_script' ) );
+
+		// The renewal list screen.
+		add_action( 'admin_menu', array( __CLASS__, 'register_page' ), 20 );
 	}
 
 	/**
@@ -169,13 +179,28 @@ class FrmChipSubscriptionsController {
 		}
 
 		check_ajax_referer( 'frm_chip_retry_renewal', 'nonce' );
-		FrmAppHelper::permission_check( 'frm_edit_entries' );
+		FrmAppHelper::permission_check( 'frm_change_settings' );
 
-		if ( 'active' !== (string) $subscription->status ) {
-			self::respond( false, __( 'Only an active subscription can be retried.', 'chip-for-formidable-forms' ) );
+		// A cancelled subscription should not be revived by a retry; the payer
+		// asked for it to stop.
+		if ( in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true ) ) {
+			self::respond(
+				false,
+				__(
+					'This subscription has been cancelled, so it will not be charged again.',
+					'chip-for-formidable-forms'
+				)
+			);
 		}
 
-		$result = FrmChipRenewals::charge( $subscription );
+		// A manual attempt is allowed on any subscription that is not cancelled,
+		// including one already marked failed, so a payer who topped their card
+		// up late can still be charged. The safety limits still apply.
+		$result = FrmChipRenewals::charge_manually( $subscription );
+
+		if ( is_wp_error( $result ) ) {
+			self::respond( false, $result->get_error_message() );
+		}
 
 		if ( 'charged' === $result ) {
 			self::respond( true, __( 'Renewal charged.', 'chip-for-formidable-forms' ) );
@@ -192,6 +217,16 @@ class FrmChipSubscriptionsController {
 				'' !== $why
 					? $why
 					: __( 'The subscription could not be renewed.', 'chip-for-formidable-forms' )
+			);
+		}
+
+		if ( 'skipped' === $result ) {
+			self::respond(
+				false,
+				__(
+					'A charge is already being processed for this subscription. Please wait a moment.',
+					'chip-for-formidable-forms'
+				)
 			);
 		}
 
@@ -292,6 +327,191 @@ class FrmChipSubscriptionsController {
 		$decoded = maybe_unserialize( $subscription->meta_value );
 
 		return is_array( $decoded ) ? $decoded : array();
+	}
+
+	/**
+	 * Register the subscription list page.
+	 *
+	 * Core's payments screen lists subscriptions but offers no hook for adding a
+	 * column or a row action, and it shows nothing about renewal — a merchant
+	 * cannot tell which subscriptions are failing or retry one. Since the data
+	 * and the action are both ours, they get their own screen rather than being
+	 * bolted onto a table that has no seam for them.
+	 *
+	 * @return void
+	 */
+	public static function register_page() {
+		$hook = add_submenu_page(
+			'formidable',
+			__( 'CHIP Subscriptions', 'chip-for-formidable-forms' ),
+			__( 'CHIP Subscriptions', 'chip-for-formidable-forms' ),
+			'frm_view_entries',
+			self::PAGE_SLUG,
+			array( __CLASS__, 'render_page' )
+		);
+
+		if ( $hook ) {
+			add_action( 'load-' . $hook, array( __CLASS__, 'handle_page_actions' ) );
+		}
+	}
+
+	/**
+	 * Handle a retry submitted from the list page.
+	 *
+	 * @return void
+	 */
+	public static function handle_page_actions() {
+		// The nonce is verified immediately below.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$sub_id = isset( $_GET['frmchip_retry'] ) ? absint( $_GET['frmchip_retry'] ) : 0;
+
+		if ( ! $sub_id ) {
+			return;
+		}
+
+		check_admin_referer( 'frm_chip_retry_' . $sub_id );
+		FrmAppHelper::permission_check( 'frm_change_settings' );
+
+		$subscriptions = new FrmTransLiteSubscription();
+		$subscription  = $subscriptions->get_one( $sub_id );
+		$notice        = array(
+			'error',
+			__( 'That subscription could not be found.', 'chip-for-formidable-forms' ),
+		);
+
+		if ( $subscription && FrmChipHooksController::GATEWAY === $subscription->paysys ) {
+			if ( in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true ) ) {
+				$notice = array(
+					'error',
+					__(
+						'This subscription is cancelled, so it will not be charged again.',
+						'chip-for-formidable-forms'
+					),
+				);
+			} else {
+				$result = FrmChipRenewals::charge_manually( $subscription );
+
+				if ( is_wp_error( $result ) ) {
+					$notice = array( 'error', $result->get_error_message() );
+				} elseif ( 'charged' === $result ) {
+					$notice = array( 'success', __( 'Renewal charged.', 'chip-for-formidable-forms' ) );
+				} elseif ( 'failed' === $result ) {
+					$fresh = $subscriptions->get_one( $sub_id );
+					$meta  = self::get_meta( $fresh );
+					$why   = isset( $meta['chip_renewal_reason'] ) ? (string) $meta['chip_renewal_reason'] : '';
+
+					$notice = array(
+						'error',
+						'' !== $why
+							? $why
+							: __( 'The subscription could not be renewed.', 'chip-for-formidable-forms' ),
+					);
+				} else {
+					$notice = array(
+						'error',
+						__( 'A charge is already being processed for this subscription.', 'chip-for-formidable-forms' ),
+					);
+				}
+			}
+		}
+
+		// Redirect so a refresh does not charge again.
+		$url = add_query_arg(
+			array(
+				'page'         => self::PAGE_SLUG,
+				'frmchip_msg'  => $notice[0],
+				'frmchip_text' => $notice[1],
+			),
+			admin_url( 'admin.php' )
+		);
+
+		wp_safe_redirect( $url );
+		exit;
+	}
+
+	/**
+	 * Render the CHIP subscriptions screen.
+	 *
+	 * @return void
+	 */
+	public static function render_page() {
+		FrmAppHelper::permission_check( 'frm_view_entries' );
+
+		$rows = self::get_subscription_rows();
+
+		// The message is our own redirect output, shown back to the user, so it
+		// carries no action and no nonce applies.
+		$frm_chip_raw      = (string) FrmAppHelper::simple_get( 'frmchip_text', 'sanitize_text_field' );
+		$frm_chip_msg_type = sanitize_key( (string) FrmAppHelper::simple_get( 'frmchip_msg' ) );
+
+		$frm_chip_msg = $frm_chip_raw;
+
+		$frm_chip_rows = $rows;
+
+		include FRM_CHIP_PATH . 'includes/views/subscriptions/list.php';
+	}
+
+	/**
+	 * Every CHIP subscription, with its renewal state.
+	 *
+	 * @return array
+	 */
+	public static function get_subscription_rows() {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$subs = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT * FROM ' . $wpdb->prefix . 'frm_subscriptions
+				 WHERE paysys = %s
+				 ORDER BY
+					CASE status
+						WHEN %s THEN 0
+						WHEN %s THEN 1
+						ELSE 2
+					END,
+					next_bill_date ASC',
+				FrmChipHooksController::GATEWAY,
+				'failed',
+				'active'
+			)
+		);
+
+		$rows = array();
+
+		foreach ( (array) $subs as $sub ) {
+			$entry = FrmEntry::getOne( (int) $sub->item_id, true );
+			$meta  = self::get_meta( $sub );
+
+			$rows[] = array(
+				'subscription' => $sub,
+				'entry'        => $entry,
+				'form'         => $entry ? FrmForm::getOne( $entry->form_id ) : null,
+				'payer'        => $entry && isset( $entry->metas ) ? self::first_email( $entry ) : '',
+				'state'        => self::describe_renewal( $sub ),
+				'failures'     => isset( $meta['chip_renewal_failures'] ) ? (int) $meta['chip_renewal_failures'] : 0,
+				'remaining'    => FrmChipRenewals::remaining_attempts( $sub ),
+				'can_retry'    => ! in_array( (string) $sub->status, array( 'future_cancel', 'canceled' ), true ),
+			);
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * First email address found on an entry.
+	 *
+	 * @param stdClass $entry Entry.
+	 * @return string
+	 */
+	private static function first_email( $entry ) {
+		foreach ( (array) $entry->metas as $value ) {
+			if ( is_email( $value ) ) {
+				return (string) $value;
+			}
+		}
+
+		return '';
 	}
 
 	/**

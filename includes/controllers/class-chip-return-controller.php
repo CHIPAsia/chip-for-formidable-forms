@@ -33,6 +33,20 @@ class FrmChipReturnController {
 	const STATUS_ARG = 'frmchipst';
 
 	/**
+	 * Query arg naming the subscription a card update belongs to.
+	 *
+	 * @var string
+	 */
+	const CARD_ARG = 'frmchip_card';
+
+	/**
+	 * Query arg carrying the card update key.
+	 *
+	 * @var string
+	 */
+	const CARD_KEY_ARG = 'frmchip_key';
+
+	/**
 	 * Maybe render the payment result instead of the form.
 	 *
 	 * Hooked to frm_filter_final_form, which passes the finished form HTML.
@@ -94,6 +108,150 @@ class FrmChipReturnController {
 		// Anything still in flight: tell the payer to wait for confirmation
 		// rather than implying the payment succeeded or failed.
 		return self::insert_message( $html, self::get_pending_message() );
+	}
+
+	/**
+	 * Handle a payer returning from a card update checkout.
+	 *
+	 * Runs on `init` rather than through a form, because the payer arrives from
+	 * an email link and no form is being submitted. The link is authorised by a
+	 * key derived from the site secret, so no login is required — a Formidable
+	 * form has no customer account to log into.
+	 *
+	 * @return void
+	 */
+	public static function maybe_handle_card_update() {
+		$subscription_id = absint( FrmAppHelper::simple_get( self::CARD_ARG, 'absint' ) );
+
+		if ( ! $subscription_id ) {
+			return;
+		}
+
+		$key          = FrmAppHelper::simple_get( self::CARD_KEY_ARG, 'sanitize_text_field' );
+		$subscription = FrmChipRenewals::resolve_card_update_request( $subscription_id, $key );
+
+		if ( is_wp_error( $subscription ) ) {
+			FrmChipHelper::log( 'Card update rejected', $subscription->get_error_message() );
+			self::render_notice(
+				__(
+					'This card update link is not valid. Please contact the site for help.',
+					'chip-for-formidable-forms'
+				),
+				false
+			);
+		}
+
+		// The purchase a previous visit created, if any. On the return leg from
+		// CHIP it is the checkout the payer just completed; on a first visit
+		// there is none. Its status is what distinguishes the two, because CHIP
+		// only echoes back the parameters we set at creation, and the purchase
+		// does not exist until after it is created.
+		$pending = FrmChipRenewals::get_card_update_purchase( $subscription );
+
+		if ( '' !== $pending && FrmChipRenewals::card_update_is_complete( $pending ) ) {
+			self::finish_card_update( $subscription, $pending );
+			return;
+		}
+
+		// First visit, or a previous attempt the payer did not complete: open a
+		// fresh checkout. A checkout is single-use, so one is created per visit
+		// rather than being baked into the emailed link.
+		$url = FrmChipRenewals::create_card_update_link( $subscription );
+
+		if ( is_wp_error( $url ) ) {
+			FrmChipHelper::log( 'Card update checkout failed', $url->get_error_message() );
+			self::render_notice(
+				__(
+					'We could not open the card update page. Please contact the site for help.',
+					'chip-for-formidable-forms'
+				),
+				false
+			);
+		}
+
+		// wp_redirect rather than wp_safe_redirect: the target is the CHIP
+		// checkout on gate.chip-in.asia, and wp_safe_redirect() refuses any host
+		// outside this site — it silently falls back to wp-admin, which is what
+		// the payer would otherwise see. The URL is not user input: it is the
+		// checkout_url CHIP just returned for a purchase this site created.
+		wp_redirect( $url ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect
+		exit;
+	}
+
+	/**
+	 * Verify the new card and store it against the subscription.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @param string   $purchase_id  Purchase that captured the card.
+	 * @return void
+	 */
+	private static function finish_card_update( $subscription, $purchase_id ) {
+		$api      = FrmChipAppController::api();
+		$purchase = is_wp_error( $api ) ? $api : $api->get_purchase( $purchase_id );
+
+		if ( is_wp_error( $purchase ) ) {
+			self::render_notice(
+				__( 'We could not check that card. Please try the link again.', 'chip-for-formidable-forms' ),
+				false
+			);
+		}
+
+		$status = isset( $purchase['status'] ) ? (string) $purchase['status'] : '';
+
+		// skip_capture means an authorised card comes back preauthorized.
+		if ( ! in_array( $status, array( 'paid', 'preauthorized' ), true ) ) {
+			self::render_notice(
+				__(
+					'That card could not be saved. Please try again with a different card.',
+					'chip-for-formidable-forms'
+				),
+				false
+			);
+		}
+
+		$done = FrmChipRenewals::replace_token( $subscription, $purchase_id );
+
+		if ( is_wp_error( $done ) ) {
+			self::render_notice( $done->get_error_message(), false );
+		}
+
+		self::render_notice(
+			__(
+				'Thank you. Your new card has been saved and your subscription will continue.',
+				'chip-for-formidable-forms'
+			),
+			true
+		);
+	}
+
+	/**
+	 * Show a short standalone message and stop.
+	 *
+	 * The payer arrives from an email with no page to return to, so the message
+	 * has to stand on its own rather than being injected into a form.
+	 *
+	 * @param string $message Message to show.
+	 * @param bool   $success Whether it is good news.
+	 * @return void
+	 */
+	private static function render_notice( $message, $success ) {
+		$title = $success
+			? __( 'Card updated', 'chip-for-formidable-forms' )
+			: __( 'Card not updated', 'chip-for-formidable-forms' );
+
+		$class = $success ? 'frm_message' : 'frm_error_style';
+
+		wp_die(
+			'<div class="' . esc_attr( $class ) . '">' . esc_html( $message ) . '</div>',
+			esc_html( $title ),
+			array(
+				'response'  => 200,
+				// A plain back link rather than a form action, since this did not
+				// come from a form submission.
+				'link_text' => esc_html__( 'Back to the site', 'chip-for-formidable-forms' ),
+				'link_url'  => esc_url( home_url( '/' ) ),
+			)
+		);
 	}
 
 	/**

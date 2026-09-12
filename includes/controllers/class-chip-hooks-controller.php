@@ -52,6 +52,9 @@ class FrmChipHooksController {
 		// Verify the payer when they come back from the CHIP checkout.
 		add_filter( 'frm_filter_final_form', 'FrmChipReturnController::maybe_show_result' );
 
+		// Handle a payer returning from a card update link.
+		add_action( 'init', 'FrmChipReturnController::maybe_handle_card_update' );
+
 		// Verify and record asynchronous CHIP callbacks.
 		add_action( 'init', 'FrmChipCallbackController::maybe_handle' );
 
@@ -61,6 +64,9 @@ class FrmChipHooksController {
 		// that updates the plugin in place never re-runs activation, so without
 		// this the renewals would silently never run.
 		FrmChipRenewals::load_hooks();
+
+		// Tell both sides when a renewal stops working.
+		FrmChipNotifications::load_hooks();
 
 		// Run pending upgrade routines after an in-place update.
 		add_action( 'admin_init', 'FrmChipInstall::maybe_upgrade' );

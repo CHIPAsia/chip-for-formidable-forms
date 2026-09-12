@@ -180,6 +180,20 @@ class FrmChipHelper {
 	}
 
 	/**
+	 * Format an amount for display in a notification.
+	 *
+	 * Amounts are stored as a plain decimal string, so this only adds the
+	 * currency. Kept separate from Formidable's own formatter because the
+	 * subscription row does not carry the payment a formatter expects.
+	 *
+	 * @param string $amount Amount as stored.
+	 * @return string
+	 */
+	public static function format_amount( $amount ) {
+		return self::CURRENCY . ' ' . number_format( (float) $amount, 2 );
+	}
+
+	/**
 	 * Get the fields that can be mapped in the payment action settings.
 	 *
 	 * The form ID list goes through `frm_trans_action_get_field_options_form_id`,

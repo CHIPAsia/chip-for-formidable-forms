@@ -54,6 +54,7 @@ final class FrmChipFormidableForms {
 		require_once FRM_CHIP_PATH . 'includes/class-chip-install.php';
 		require_once FRM_CHIP_PATH . 'includes/class-chip-settlement.php';
 		require_once FRM_CHIP_PATH . 'includes/class-chip-renewals.php';
+		require_once FRM_CHIP_PATH . 'includes/class-chip-notifications.php';
 		require_once FRM_CHIP_PATH . 'includes/helpers/class-chip-helper.php';
 		require_once FRM_CHIP_PATH . 'includes/helpers/class-chip-payment-methods.php';
 		require_once FRM_CHIP_PATH . 'includes/models/class-chip-settings.php';

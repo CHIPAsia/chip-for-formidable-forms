@@ -6,6 +6,9 @@
 * Added - Recurring payments, charged from the site on a schedule using a card token stored by CHIP.
 * Added - Failed renewal retries on days 3, 5 and 7 after the due date; a rejected card token fails the subscription immediately rather than retrying.
 * Added - The payments screen shows a subscription's next charge, any retry in progress, and why a renewal failed, with a Retry now action.
+* Added - A CHIP Subscriptions screen listing every subscription with its renewal state, attempts remaining, and a Retry now action. Manual retry is always available, including for a failed subscription.
+* Added - Retrying is capped at the card network limit of 15 charge attempts per card per 30 days, and at 10 consecutive failures.
+* Added - Renewal failure emails to both the merchant and the payer. The payer's email carries a link to supply a new card without logging in.
 * Added - Payment method selection, configured globally and overridable per form.
 * Added - Runtime resolution of the DuitNow QR and ShopeePay identifier groups against the methods the brand actually has.
 * Added - Phone as a mappable client field, sent to CHIP exactly as the payer typed it.
