@@ -263,6 +263,12 @@ class FrmChipHelper {
 	/**
 	 * Read a value from an entry for a configured field ID.
 	 *
+	 * Also resolves a field that belongs to an embedded form. Those values live on
+	 * the child entry, not the one being submitted: the parent's column for an
+	 * embedded form holds a list of child entry IDs, so reading it directly would
+	 * hand CHIP the ID ("32") instead of what the payer typed. Core resolves this
+	 * the same way in FrmEntriesHelper::prepare_display_value().
+	 *
 	 * @param mixed    $field_id Field ID from the action settings.
 	 * @param stdClass $entry    Entry.
 	 * @return string
@@ -270,12 +276,54 @@ class FrmChipHelper {
 	public static function get_entry_value( $field_id, $entry ) {
 		$field_id = absint( $field_id );
 
-		if ( ! $field_id || empty( $entry->metas[ $field_id ] ) ) {
+		if ( ! $field_id || ! $entry || empty( $entry->metas ) ) {
 			return '';
 		}
 
-		$value = $entry->metas[ $field_id ];
+		if ( isset( $entry->metas[ $field_id ] ) && ! empty( $entry->metas[ $field_id ] ) ) {
+			return self::flatten_value( $entry->metas[ $field_id ] );
+		}
 
+		return self::get_embedded_value( $field_id, $entry );
+	}
+
+	/**
+	 * Read a field that belongs to an embedded form, from its child entry.
+	 *
+	 * @param int      $field_id Field ID from the action settings.
+	 * @param stdClass $entry    Parent entry.
+	 * @return string
+	 */
+	private static function get_embedded_value( $field_id, $entry ) {
+		$field = FrmField::getOne( $field_id );
+
+		if ( ! $field ) {
+			return '';
+		}
+
+		// Not an embedded field: nothing further to look up.
+		if ( (int) $field->form_id === (int) $entry->form_id ) {
+			return '';
+		}
+
+		$children = FrmEntry::getAll( array( 'it.parent_item_id' => (int) $entry->id ), '', '', true );
+
+		foreach ( (array) $children as $child ) {
+			if ( ! empty( $child->metas[ $field_id ] ) ) {
+				return self::flatten_value( $child->metas[ $field_id ] );
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Reduce a stored meta value to a single string.
+	 *
+	 * @param mixed $value Stored value.
+	 * @return string
+	 */
+	private static function flatten_value( $value ) {
 		if ( is_array( $value ) ) {
 			$value = implode( ' ', array_filter( array_map( 'strval', $value ) ) );
 		}
