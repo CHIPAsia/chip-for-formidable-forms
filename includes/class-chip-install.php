@@ -92,6 +92,12 @@ class FrmChipInstall {
 	public static function maybe_upgrade() {
 		$installed = get_option( self::VERSION_OPTION );
 
+		// Scheduled work is re-asserted on every upgrade check, not only when the
+		// version changed. A site whose cron was never scheduled — because the
+		// plugin was updated in place rather than reactivated — would otherwise
+		// stay broken forever, since the version already matches.
+		FrmChipRenewals::maybe_schedule();
+
 		if ( FRM_CHIP_MODULE_VERSION === $installed ) {
 			return;
 		}

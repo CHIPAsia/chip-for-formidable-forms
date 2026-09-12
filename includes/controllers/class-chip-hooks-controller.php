@@ -56,7 +56,10 @@ class FrmChipHooksController {
 		add_action( 'init', 'FrmChipCallbackController::maybe_handle' );
 
 		// CHIP stores a card token but never renews on its own, so the site has
-		// to charge each period itself.
+		// to charge each period itself. load_hooks() also makes sure the cron is
+		// scheduled, which the activation hook alone cannot guarantee: a site
+		// that updates the plugin in place never re-runs activation, so without
+		// this the renewals would silently never run.
 		FrmChipRenewals::load_hooks();
 
 		// Run pending upgrade routines after an in-place update.

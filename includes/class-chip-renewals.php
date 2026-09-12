@@ -50,12 +50,19 @@ class FrmChipRenewals {
 	);
 
 	/**
-	 * Register the cron handler.
+	 * Register the cron handler, and make sure the schedule exists.
+	 *
+	 * The scheduling check runs on every request rather than only on activation.
+	 * A site that updates the plugin in place never re-runs the activation hook,
+	 * and on such a site renewal would otherwise never be triggered at all —
+	 * silently, because everything else about the plugin keeps working.
 	 *
 	 * @return void
 	 */
 	public static function load_hooks() {
-		add_action( 'frm_chip_renewals', 'FrmChipRenewals::run' );
+		add_action( 'frm_chip_renewals', array( __CLASS__, 'run' ) );
+
+		self::maybe_schedule();
 	}
 
 	/**
