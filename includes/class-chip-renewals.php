@@ -175,8 +175,6 @@ class FrmChipRenewals {
 			return 'skipped';
 		}
 
-		// The token lives on the purchase that first stored the card, which is
-		// what sub_id carries.
 		$token = (string) $subscription->sub_id;
 
 		if ( '' === $token ) {
@@ -185,8 +183,74 @@ class FrmChipRenewals {
 			return 'skipped';
 		}
 
-		$settings = FrmChipSettings::get_settings();
-		$amount   = FrmChipHelper::to_minor_units( $subscription->amount );
+		// A charge takes seconds, and the merchant's "Retry now" can be clicked
+		// again while the first one is still in flight. Without this, each click
+		// issues a separate charge against the payer's card. The same lock the
+		// settlement uses keeps a concurrent cron run out too.
+		if ( ! self::acquire_charge_lock( $subscription ) ) {
+			FrmChipHelper::log( 'Renewal already in progress', $subscription->id );
+
+			return 'skipped';
+		}
+
+		try {
+			return self::charge_locked( $api, $subscription, $token, FrmChipSettings::get_settings() );
+		} finally {
+			self::release_charge_lock( $subscription );
+		}
+	}
+
+	/**
+	 * Take the per-subscription charge lock.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return bool
+	 */
+	private static function acquire_charge_lock( $subscription ) {
+		global $wpdb;
+
+		$lock = self::charge_lock_name( $subscription );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$acquired = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $lock, 0 ) );
+
+		return '1' === (string) $acquired;
+	}
+
+	/**
+	 * Release the per-subscription charge lock.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return void
+	 */
+	private static function release_charge_lock( $subscription ) {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::charge_lock_name( $subscription ) ) );
+	}
+
+	/**
+	 * Lock name for a subscription's in-flight charge.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string
+	 */
+	private static function charge_lock_name( $subscription ) {
+		return 'frm_chip_renewal_' . (int) $subscription->id;
+	}
+
+	/**
+	 * Charge a subscription, already holding its lock.
+	 *
+	 * @param FrmChipApi      $api          API client.
+	 * @param stdClass        $subscription Subscription row.
+	 * @param string          $token        Recurring token.
+	 * @param FrmChipSettings $settings     Plugin settings.
+	 * @return string charged|failed|skipped.
+	 */
+	private static function charge_locked( $api, $subscription, $token, $settings ) {
+		$amount = FrmChipHelper::to_minor_units( $subscription->amount );
 
 		$purchase = self::create_renewal_purchase( $api, $subscription, $amount, $settings );
 

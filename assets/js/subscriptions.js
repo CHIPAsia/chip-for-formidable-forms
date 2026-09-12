@@ -61,7 +61,21 @@
 						link.parentNode.insertBefore( message, link.nextSibling );
 					}
 
+					// A charged renewal changes the subscription, so the panel is
+					// reloaded to show the new state. Leaving the link live would
+					// invite a second click on a subscription that no longer
+					// needs a retry.
+					var charged = box.querySelector( '.frm_updated_message' );
+					var succeeded = charged && /charged/i.test( charged.textContent );
+
 					delete link.dataset.busy;
+
+					if ( succeeded ) {
+						link.textContent = original;
+						window.location.reload();
+						return;
+					}
+
 					link.textContent = original;
 				} )
 				.catch( function () {
