@@ -121,6 +121,9 @@ function frm_chip_deactivate() {
  * a merchant who reinstalls to retry a failed setup is not locked out of the
  * CHIP dashboard.
  *
- * Nothing here writes rows to Formidable's own tables, so there is no orphaned
- * data beyond the two options above.
+ * The residue is three options and nothing else: the settings, the cached public
+ * key, and the installed-version marker. The payment-method cache is a transient
+ * and expires on its own. Nothing here writes rows to Formidable's own tables,
+ * and the plugin creates no tables of its own, so deleting the plugin leaves no
+ * orphaned rows behind.
  */
