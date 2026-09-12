@@ -117,7 +117,29 @@ class FrmChipRenewals {
 	}
 
 	/**
-	 * Charge every subscription that is due.
+	 * How many subscriptions to charge in one run.
+	 *
+	 * A charge costs a CHIP round trip (~0.3s), so the run is capped well inside a
+	 * typical 30s PHP limit. Anything left over is picked up by the next run
+	 * 12 hours later rather than losing the request part-way through.
+	 *
+	 * @var int
+	 */
+	const BATCH_SIZE = 50;
+
+	/**
+	 * Stop starting new charges after this many seconds.
+	 *
+	 * A backstop for the slow case: if CHIP is responding slowly, finishing the
+	 * current batch could still overrun and kill the request, so the loop stops
+	 * early and lets the next run continue.
+	 *
+	 * @var int
+	 */
+	const TIME_BUDGET = 20;
+
+	/**
+	 * Charge subscriptions that are due, up to a bounded batch.
 	 *
 	 * @return array Summary of what happened, for the log and for tests.
 	 */
@@ -140,7 +162,23 @@ class FrmChipRenewals {
 			'skipped' => 0,
 		);
 
-		foreach ( self::get_due_subscriptions() as $subscription ) {
+		// Counted before the batch, not after: a charge advances the bill date and a
+		// stood-down subscription is taken out of the queue, so counting afterwards
+		// compares against a set that already changed and can go negative.
+		$was_due = self::count_due_subscriptions();
+		$due     = array_slice( self::get_due_subscriptions(), 0, self::BATCH_SIZE );
+		$started = time();
+		$reached = 0;
+
+		foreach ( $due as $subscription ) {
+			++$reached;
+
+			// Stop before the request runs out of time. The subscription is left
+			// due, so the next run charges it rather than losing it.
+			if ( ( time() - $started ) >= self::TIME_BUDGET ) {
+				break;
+			}
+
 			++$summary['checked'];
 
 			$result = self::charge( $subscription );
@@ -154,7 +192,35 @@ class FrmChipRenewals {
 			}
 		}
 
+		$summary['remaining'] = max( 0, $was_due - $reached );
+
+		if ( $summary['remaining'] > 0 ) {
+			FrmChipHelper::log( 'Renewals deferred to the next run', $summary['remaining'] );
+		}
+
 		return $summary;
+	}
+
+	/**
+	 * How many subscriptions are due, without loading them.
+	 *
+	 * @return int
+	 */
+	private static function count_due_subscriptions() {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COUNT(*) FROM ' . $wpdb->prefix . 'frm_subscriptions
+				 WHERE paysys = %s AND status = %s AND next_bill_date IS NOT NULL
+				   AND next_bill_date != %s AND next_bill_date <= %s',
+				FrmChipHooksController::GATEWAY,
+				'active',
+				'0000-00-00',
+				gmdate( 'Y-m-d' )
+			)
+		);
 	}
 
 	/**
@@ -208,6 +274,12 @@ class FrmChipRenewals {
 		if ( '' === $token ) {
 			FrmChipHelper::log( 'Renewal has no token', $subscription->id );
 
+			// A subscription with no token can never be charged, and its bill date
+			// is already in the past, so it sorts to the front of every run. Leaving
+			// it due would occupy a batch slot forever and starve subscriptions that
+			// can actually be charged. Stand it down instead.
+			self::stand_down( $subscription, __( 'No saved card to charge.', 'chip-for-formidable-forms' ) );
+
 			return 'skipped';
 		}
 
@@ -218,6 +290,8 @@ class FrmChipRenewals {
 		if ( ! self::acquire_charge_lock( $subscription ) ) {
 			FrmChipHelper::log( 'Renewal already in progress', $subscription->id );
 
+			// Skipped, but left due: another worker is charging this one right now,
+			// so the next run must still see it.
 			return 'skipped';
 		}
 
@@ -226,6 +300,41 @@ class FrmChipRenewals {
 		} finally {
 			self::release_charge_lock( $subscription );
 		}
+	}
+
+	/**
+	 * Take a subscription out of the renewal queue because it cannot be charged.
+	 *
+	 * Used when there is no stored token: the subscription can never be charged in
+	 * that state, and because its bill date is already in the past it sorts to the
+	 * front of every run. Left due, it would hold a batch slot permanently and stop
+	 * other subscriptions from being charged at all.
+	 *
+	 * The merchant can still charge it by hand from the subscriptions screen, and
+	 * the payer can replace the card, so this is recoverable rather than final.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @param string   $reason       Why it was stood down.
+	 * @return void
+	 */
+	private static function stand_down( $subscription, $reason ) {
+		$meta = self::get_meta( $subscription );
+
+		$meta['chip_renewal_failed_at'] = current_time( 'mysql', 1 );
+		$meta['chip_renewal_reason']    = $reason;
+
+		self::update_subscription(
+			$subscription,
+			array(
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- column on frm_subscriptions, not postmeta.
+				'meta_value'     => $meta,
+				'status'         => 'failed',
+				// Cleared so the due query skips it and the batch moves on.
+				'next_bill_date' => '0000-00-00',
+			)
+		);
+
+		FrmChipHelper::log( 'Subscription stood down', $subscription->id . ': ' . $reason );
 	}
 
 	/**

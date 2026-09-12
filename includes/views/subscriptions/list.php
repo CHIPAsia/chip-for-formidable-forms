@@ -45,6 +45,43 @@ $frm_chip_status_labels = array(
 				<?php esc_html_e( 'No CHIP subscriptions yet.', 'chip-for-formidable-forms' ); ?>
 			</div>
 		<?php } else { ?>
+			<?php if ( $frm_chip_pages > 1 ) { ?>
+				<div class="tablenav top">
+					<div class="tablenav-pages">
+						<span class="displaying-num">
+							<?php
+							echo esc_html(
+								sprintf(
+									/* translators: %s: number of subscriptions. */
+									_n(
+										'%s subscription',
+										'%s subscriptions',
+										$frm_chip_total,
+										'chip-for-formidable-forms'
+									),
+									number_format_i18n( $frm_chip_total )
+								)
+							);
+							?>
+						</span>
+						<?php
+						$frm_chip_links = paginate_links(
+							array(
+								'base'      => add_query_arg( 'frmchip_page', '%#%' ),
+								'format'    => '',
+								'current'   => (int) $frm_chip_page,
+								'total'     => (int) $frm_chip_pages,
+								'type'      => 'plain',
+								'prev_text' => '&laquo;',
+								'next_text' => '&raquo;',
+							)
+						);
+
+						echo wp_kses_post( $frm_chip_links );
+						?>
+					</div>
+				</div>
+			<?php } ?>
 			<table class="wp-list-table widefat fixed striped">
 				<thead>
 					<tr>

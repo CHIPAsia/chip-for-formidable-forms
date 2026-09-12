@@ -437,7 +437,10 @@ class FrmChipSubscriptionsController {
 	public static function render_page() {
 		FrmAppHelper::permission_check( 'frm_view_entries' );
 
-		$rows = self::get_subscription_rows();
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$frm_chip_page = isset( $_GET['frmchip_page'] ) ? max( 1, absint( $_GET['frmchip_page'] ) ) : 1;
+
+		$rows = self::get_subscription_rows( $frm_chip_page );
 
 		// The message is our own redirect output, shown back to the user, so it
 		// carries no action and no nonce applies.
@@ -446,18 +449,51 @@ class FrmChipSubscriptionsController {
 
 		$frm_chip_msg = $frm_chip_raw;
 
-		$frm_chip_rows = $rows;
+		$frm_chip_rows  = $rows;
+		$frm_chip_total = self::count_subscriptions();
+		$frm_chip_pages = max( 1, (int) ceil( $frm_chip_total / self::PER_PAGE ) );
 
 		include FRM_CHIP_PATH . 'includes/views/subscriptions/list.php';
 	}
 
 	/**
+	 * How many CHIP subscriptions exist, for the pager.
+	 *
+	 * @return int
+	 */
+	private static function count_subscriptions() {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COUNT(*) FROM ' . $wpdb->prefix . 'frm_subscriptions WHERE paysys = %s',
+				FrmChipHooksController::GATEWAY
+			)
+		);
+	}
+
+	/**
+	 * How many subscriptions the list screen shows per page.
+	 *
+	 * A merchant accumulating subscriptions for years should not load every one
+	 * of them, with an entry and form lookup each, in a single request.
+	 *
+	 * @var int
+	 */
+	const PER_PAGE = 50;
+
+	/**
 	 * Every CHIP subscription, with its renewal state.
 	 *
+	 * @param int $page 1-based page number.
 	 * @return array
 	 */
-	public static function get_subscription_rows() {
+	public static function get_subscription_rows( $page = 1 ) {
 		global $wpdb;
+
+		$per_page = self::PER_PAGE;
+		$offset   = max( 0, ( (int) $page - 1 ) * $per_page );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$subs = $wpdb->get_results(
@@ -470,10 +506,13 @@ class FrmChipSubscriptionsController {
 						WHEN %s THEN 1
 						ELSE 2
 					END,
-					next_bill_date ASC',
+					next_bill_date ASC
+				 LIMIT %d OFFSET %d',
 				FrmChipHooksController::GATEWAY,
 				'failed',
-				'active'
+				'active',
+				$per_page,
+				$offset
 			)
 		);
 
