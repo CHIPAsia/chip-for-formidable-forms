@@ -949,9 +949,27 @@ class FrmChipRenewals {
 
 		$count = max( 1, (int) $subscription->interval_count );
 
-		// Anchor on the existing date when it is in the future, so a charge that
-		// lands early does not drift the schedule forward.
-		$base = gmdate( 'Y-m-d', strtotime( '+' . $count . ' ' . $interval . 's' ) );
+		/*
+		 * Anchored on the date the payment was due, not on now.
+		 *
+		 * Computing from now means a cron that runs late moves the payer's billing
+		 * day forward by however late it ran, permanently: the next computation
+		 * starts from the already-moved date, so the shift is baked in. A
+		 * subscription billed on the 10th, charged when the cron runs on the 13th,
+		 * would move to the 13th and stay there.
+		 *
+		 * Anchoring keeps the day the payer agreed to. The sibling Gravity Forms
+		 * plugin documents the same invariant for the same reason.
+		 */
+		$due = isset( $subscription->next_bill_date ) ? (string) $subscription->next_bill_date : '';
+
+		if ( '' === $due || '0000-00-00' === $due || ! strtotime( $due ) ) {
+			// No usable anchor (a row recovered without one): fall back to now,
+			// which is the only safe choice left.
+			$due = gmdate( 'Y-m-d' );
+		}
+
+		$base = gmdate( 'Y-m-d', strtotime( $due . ' +' . $count . ' ' . $interval . 's' ) );
 
 		$meta = self::get_meta( $subscription );
 
