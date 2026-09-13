@@ -654,6 +654,25 @@ class FrmChipActionsController {
 			FRM_CHIP_MODULE_VERSION,
 			true
 		);
+
+		/*
+		 * The currency CHIP settles in, and the reason, for the script that pins
+		 * the shared currency dropdown. Formidable offers 31 currencies, but CHIP
+		 * settles Malaysian merchants in MYR only, so the choice is presented as
+		 * fixed rather than discarded silently on save.
+		 */
+		wp_localize_script(
+			'frm-chip-action',
+			'frmChipAdmin',
+			array(
+				'currency'      => FrmChipHelper::CURRENCY,
+				'currencyLabel' => sprintf(
+					/* translators: %s: currency code, e.g. MYR. */
+					__( 'CHIP settles Malaysian merchants in %s only.', 'chip-for-formidable-forms' ),
+					FrmChipHelper::CURRENCY
+				),
+			)
+		);
 	}
 
 	/**
