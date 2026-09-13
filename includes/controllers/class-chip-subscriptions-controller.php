@@ -325,11 +325,33 @@ class FrmChipSubscriptionsController {
 		}
 
 		if ( ! empty( $subscription->next_bill_date ) ) {
-			return sprintf(
+			$next = sprintf(
 				/* translators: %s: next billing date. */
 				__( 'Next charge on %s.', 'chip-for-formidable-forms' ),
 				FrmAppHelper::get_localized_date( 'M j, Y', $subscription->next_bill_date )
 			);
+
+			// A refunded payment leaves the subscription running, so the next
+			// charge would take money back for a period already returned. Say so
+			// here: nothing else on the screen distinguishes this subscription
+			// from one that has never been refunded.
+			if ( ! empty( $meta['chip_refunded_count'] ) ) {
+				$count = (int) $meta['chip_refunded_count'];
+
+				return sprintf(
+					/* translators: 1: next billing date, 2: number of refunded payments. */
+					_n(
+						'%1$s %2$d payment on this subscription was refunded.',
+						'%1$s %2$d payments on this subscription were refunded.',
+						$count,
+						'chip-for-formidable-forms'
+					),
+					$next,
+					$count
+				);
+			}
+
+			return $next;
 		}
 
 		return '';
@@ -364,10 +386,13 @@ class FrmChipSubscriptionsController {
 	/**
 	 * Read the plugin's own meta from a subscription row.
 	 *
+	 * Public because the refund handler records against the same meta, and both
+	 * must read and write it the same way.
+	 *
 	 * @param stdClass $subscription Subscription row.
 	 * @return array
 	 */
-	private static function get_meta( $subscription ) {
+	public static function get_meta( $subscription ) {
 		if ( empty( $subscription->meta_value ) ) {
 			return array();
 		}

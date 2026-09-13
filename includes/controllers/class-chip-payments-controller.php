@@ -87,7 +87,70 @@ class FrmChipPaymentsController {
 
 		FrmTransLitePaymentsController::change_payment_status( $payment, 'refunded' );
 
+		// Record the refund against the subscription. The payment row alone does
+		// not tell a merchant that a subscription has had money returned: the
+		// subscription keeps running, keeps its bill date, and the screen shows it
+		// as an ordinary active subscription. This leaves a trace the screen and
+		// the renewal engine can both see.
+		self::note_refund_on_subscription( $payment );
+
 		self::respond( true, __( 'Refunded', 'chip-for-formidable-forms' ) );
+	}
+
+	/**
+	 * Record a refund against the subscription the payment belongs to.
+	 *
+	 * Core does not link a refund to a subscription, and neither does this plugin's
+	 * renewal engine: the subscription keeps its status and its bill date, so the
+	 * payer is charged again next period with nothing on the screen to say money
+	 * was returned. Refunding the first payment of a subscription is the sharp
+	 * case — the payer has their money back and keeps being billed.
+	 *
+	 * The subscription is deliberately NOT stopped: a merchant refunding one
+	 * renewal may only mean to give that period back, and cancelling on their
+	 * behalf would be a worse error than leaving it running. What the merchant
+	 * lacks is the information, so the refund is recorded and surfaced instead.
+	 *
+	 * @param stdClass $payment Payment row.
+	 * @return void
+	 */
+	private static function note_refund_on_subscription( $payment ) {
+		if ( empty( $payment->sub_id ) ) {
+			return;
+		}
+
+		$subscriptions = new FrmTransLiteSubscription();
+		$subscription  = $subscriptions->get_one( (int) $payment->sub_id );
+
+		if ( ! $subscription ) {
+			return;
+		}
+
+		$meta = FrmChipSubscriptionsController::get_meta( $subscription );
+
+		$meta['chip_refunded_payment'] = (int) $payment->id;
+		$meta['chip_refunded_at']      = gmdate( 'Y-m-d H:i:s' );
+
+		// Count them, so a screen can say "2 payments refunded" without a query.
+		$meta['chip_refunded_count'] = isset( $meta['chip_refunded_count'] )
+			? (int) $meta['chip_refunded_count'] + 1
+			: 1;
+
+		$subscriptions->update(
+			$subscription->id,
+			array(
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- column on frm_subscriptions, not postmeta.
+				'meta_value' => $meta,
+			)
+		);
+
+		FrmChipHelper::log(
+			'Refund recorded against subscription',
+			array(
+				'sub'     => $subscription->id,
+				'payment' => $payment->id,
+			)
+		);
 	}
 
 	/**
