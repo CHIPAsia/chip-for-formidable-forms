@@ -1,22 +1,34 @@
 == Changelog ==
 
+= 1.0.1 2026-09-13 =
+* Fixed - A purchase paid for less than the order completed the payment as if paid in full. The amount CHIP reports is now compared with the order total, and an underpayment is held as pending with the amounts recorded instead of being marked complete.
+* Fixed - A field inside an embedded form (Formidable Pro) could be selected in the field mapping but its value could not be read, so a form using one for the payer's email or phone could not take a payment at all. The value is now resolved from the embedded form's own entry.
+* Fixed - A CHIP outage was treated as a failed charge attempt, consuming one of the four retry slots and moving the subscription's bill date forward. A timeout, a 5xx or an unreadable response now defers the renewal instead, and only a decline that names the card counts against the retry limit.
+* Fixed - The renewal run loaded every due subscription and charged them one at a time, so a store with many falling due on the same day lost the request part-way and silently skipped the rest until the next run. The run is now bounded and reports what it deferred.
+* Fixed - A subscription with no stored card could never be charged, and because its due date was already in the past it was always first in line. It now stands down so it cannot block subscriptions that can be charged.
+* Fixed - The renewal run reported its remainder by subtracting the rows it had touched, so a subscription skipped because another worker held its charge lock was counted as done and the run claimed there was nothing left. The remainder now reflects what is really still due.
+* Fixed - A subscription that failed in place could be left with no renewal schedule on a site that updated the plugin rather than reactivating it. The schedule is now asserted on every request.
+* Fixed - The payments screen offered a manual retry only when a failure had already been recorded, contradicting the subscriptions screen, and a healthy subscription showed no action at all. Both screens now offer a retry unless the payer has ended the subscription.
+* Fixed - A subscription with a completed payment could not be found by a payer replacing their card, and the emailed card-update link created its checkout up front so it was spent before it was opened. The link is now stable and opens a fresh checkout when used.
+* Added - A CHIP Subscriptions screen listing every subscription with its renewal state, attempts remaining, and a Retry now action.
+* Added - Renewal failure emails to both the merchant and the payer, with a link for the payer to supply a new card without logging in.
+* Added - Retrying is capped at the card network limit of 15 charge attempts per card per 30 days, and at 10 consecutive failures.
+* Added - Signature verified server callbacks with an API fallback, and per-payment locking so the return redirect and the server callback cannot settle the same payment twice.
+* Changed - The retry control names the payer and the subscription, the subscription table uses row headers, and the outcome of a retry is announced to assistive technology.
+* Changed - The subscription list is paged so a long list does not load every subscription in one request.
+
 = 1.0.0 2026-09-11 =
 * Added - CHIP registered as a payment gateway on Formidable's shared Collect a Payment action, alongside Stripe, Square and PayPal.
 * Added - One-time payments through the CHIP hosted checkout.
 * Added - Recurring payments, charged from the site on a schedule using a card token stored by CHIP.
 * Added - Failed renewal retries on days 3, 5 and 7 after the due date; a rejected card token fails the subscription immediately rather than retrying.
 * Added - The payments screen shows a subscription's next charge, any retry in progress, and why a renewal failed, with a Retry now action.
-* Added - A CHIP Subscriptions screen listing every subscription with its renewal state, attempts remaining, and a Retry now action. Manual retry is always available, including for a failed subscription.
-* Added - Retrying is capped at the card network limit of 15 charge attempts per card per 30 days, and at 10 consecutive failures.
-* Added - Renewal failure emails to both the merchant and the payer. The payer's email carries a link to supply a new card without logging in.
 * Added - Payment method selection, configured globally and overridable per form.
 * Added - Runtime resolution of the DuitNow QR and ShopeePay identifier groups against the methods the brand actually has.
 * Added - Phone as a mappable client field, sent to CHIP exactly as the payer typed it.
 * Added - Fields inside an embedded form (Formidable Pro) are offered in the field mapping, labelled with their form.
 * Added - Refunds from the Formidable payments screen.
 * Added - Subscription cancellation, which removes the reusable token and stops future charges.
-* Added - Signature verified server callbacks, with verification against the CHIP API as a fallback.
-* Added - Per-payment locking so the return redirect and the server callback cannot settle the same payment twice.
 * Added - Global settings section for credentials, purchase defaults and the payment method list.
 * Added - Filters: `frm_chip_purchase_params`, `frm_chip_return_url`, `frm_chip_purchase_timezone`, `frm_chip_action_field_options`, `frm_chip_sslverify`.
 * Changed - Validation errors from CHIP are reported with the field and reason instead of a generic HTTP status.
