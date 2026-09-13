@@ -175,6 +175,13 @@ class FrmChipPaymentsController {
 			return;
 		}
 
+		// A refund on a payment that funds a subscription is a decision about that
+		// subscription, not only about the money. Core's refund link asks "are you
+		// sure", which cannot express the difference between giving one period back
+		// and ending the arrangement. When there is a live subscription behind this
+		// payment, offer the choice explicitly instead.
+		$subscription = self::refundable_subscription( $payment );
+
 		?>
 		<div class="misc-pub-section">
 			<?php FrmAppHelper::icon_by_class( 'frmfont frm_credit_card_icon' ); ?>
@@ -184,6 +191,96 @@ class FrmChipPaymentsController {
 			</span>
 		</div>
 		<?php
+
+		if ( ! $subscription ) {
+			return;
+		}
+
+		$refund_url = admin_url(
+			'admin-ajax.php?action=frm_trans_refund&payment_id=' . (int) $payment->id
+			. '&nonce=' . wp_create_nonce( 'frm_trans_ajax' )
+		);
+		$cancel_url = admin_url(
+			'admin-ajax.php?action=frm_trans_cancel&sub=' . (int) $subscription->id
+			. '&nonce=' . wp_create_nonce( 'frm_trans_ajax' )
+		);
+
+		?>
+		<div class="misc-pub-section" data-frm-chip-refund-choice>
+			<?php FrmAppHelper::icon_by_class( 'frmfont frm_product_icon' ); ?>
+			<span class="frm_link_label">
+				<?php esc_html_e( 'This payment funds a subscription.', 'chip-for-formidable-forms' ); ?>
+			</span>
+
+			<div class="frm-chip-refund-choice-actions">
+				<?php if ( 'complete' === (string) $payment->status ) { ?>
+					<a href="<?php echo esc_url( $refund_url ); ?>"
+						class="frm_chip_refund_only"
+						data-frmverify="
+						<?php
+							echo esc_attr__(
+								'Refund this payment and leave the subscription running?',
+								'chip-for-formidable-forms'
+							);
+						?>
+						">
+						<?php esc_html_e( 'Refund only', 'chip-for-formidable-forms' ); ?>
+					</a>
+
+					<a href="<?php echo esc_url( $refund_url ); ?>"
+						class="frm_chip_refund_and_cancel"
+						data-frm-chip-cancel="<?php echo esc_url( $cancel_url ); ?>"
+						data-frmverify="
+						<?php
+							echo esc_attr__(
+								'Refund this payment and cancel the subscription? No further charges will be made.',
+								'chip-for-formidable-forms'
+							);
+						?>
+						">
+						<?php esc_html_e( 'Refund and cancel subscription', 'chip-for-formidable-forms' ); ?>
+					</a>
+				<?php } else { ?>
+					<span class="description">
+						<?php esc_html_e( 'Only a completed payment can be refunded.', 'chip-for-formidable-forms' ); ?>
+					</span>
+				<?php } ?>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Find the live subscription a payment funds, if any.
+	 *
+	 * "Live" means the subscription would still be charged: a subscription the
+	 * payer has already cancelled is not affected by refunding a payment, so
+	 * offering to cancel it again would be noise.
+	 *
+	 * @param stdClass $payment Payment row.
+	 * @return stdClass|null Subscription row, or null.
+	 */
+	private static function refundable_subscription( $payment ) {
+		if ( empty( $payment->sub_id ) ) {
+			return null;
+		}
+
+		$subscriptions = new FrmTransLiteSubscription();
+		$subscription  = $subscriptions->get_one( (int) $payment->sub_id );
+
+		if ( ! $subscription ) {
+			return null;
+		}
+
+		if ( FrmChipHooksController::GATEWAY !== (string) $subscription->paysys ) {
+			return null;
+		}
+
+		if ( in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true ) ) {
+			return null;
+		}
+
+		return $subscription;
 	}
 
 	/**

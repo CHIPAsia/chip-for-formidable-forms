@@ -92,6 +92,24 @@ class FrmChipSubscriptionsController {
 			FRM_CHIP_MODULE_VERSION,
 			true
 		);
+
+		// The refund-then-cancel choice on a payment's sidebar.
+		wp_enqueue_script(
+			'frm-chip-refund',
+			FRM_CHIP_URL . 'assets/js/refund.js',
+			array(),
+			FRM_CHIP_MODULE_VERSION,
+			true
+		);
+
+		wp_register_style( 'frm-chip-refund', false, array(), FRM_CHIP_MODULE_VERSION );
+		wp_enqueue_style( 'frm-chip-refund' );
+		wp_add_inline_style(
+			'frm-chip-refund',
+			'.frm-chip-refund-choice-actions { margin-top: 6px; }'
+			. '.frm-chip-refund-choice-actions a { display: block; margin-bottom: 4px; }'
+			. '.frm-chip-refund-choice-actions .description { display: block; }'
+		);
 	}
 
 	/**
