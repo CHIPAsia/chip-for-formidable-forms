@@ -75,6 +75,8 @@
 			body.append( 'action', 'frm_chip_retry_renewal' );
 			body.append( 'sub', button.getAttribute( 'data-sub' ) );
 			body.append( 'nonce', button.getAttribute( 'data-nonce' ) );
+			// The action, so the server can tell a retry from an early renewal.
+			body.append( 'mode', button.getAttribute( 'data-mode' ) || 'retry' );
 
 			fetch( window.ajaxurl, {
 				method: 'POST',

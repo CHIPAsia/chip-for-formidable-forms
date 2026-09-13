@@ -213,21 +213,54 @@ $frm_chip_status_labels = array(
 										);
 
 									$frm_chip_retry_label = sprintf(
-										/* translators: 1: payer name, 2: status, 3: subscription id. */
+												/* translators: 1: payer name, 2: status, 3: subscription id. */
 										__( 'Retry now for %1$s (%2$s), sub %3$d', 'chip-for-formidable-forms' ),
 										$frm_chip_who,
 										$frm_chip_label,
 										(int) $frm_chip_sub->id
 									);
 									?>
-									<a href="<?php echo esc_url( $frm_chip_retry_url ); ?>"
-										class="button button-small"
-										aria-label="<?php echo esc_attr( $frm_chip_retry_label ); ?>">
-										<?php esc_html_e( 'Retry now', 'chip-for-formidable-forms' ); ?>
-									</a>
-								<?php } else { ?>
-									&mdash;
-								<?php } ?>
+												<a href="<?php echo esc_url( $frm_chip_retry_url ); ?>"
+												class="button button-small"
+												aria-label="<?php echo esc_attr( $frm_chip_retry_label ); ?>">
+												<?php esc_html_e( 'Retry now', 'chip-for-formidable-forms' ); ?>
+												</a>
+												<?php } elseif ( $frm_chip_row['can_renew_now'] ) { ?>
+												<?php
+												// The subscription is healthy and not yet due, so this is an
+												// early renewal rather than a retry, and it moves the schedule.
+												// Labelled as such, so the merchant is not misled about what
+												// pressing it does.
+												$frm_chip_renew_url = wp_nonce_url(
+													add_query_arg(
+														array(
+															'page' => FrmChipSubscriptionsController::PAGE_SLUG,
+															'frmchip_renew' => (int) $frm_chip_sub->id,
+														),
+														admin_url( 'admin.php' )
+													),
+													'frm_chip_renew_' . (int) $frm_chip_sub->id
+												);
+
+												$frm_chip_renew_label = sprintf(
+												/* translators: 1: payer name, 2: status, 3: subscription id. */
+													__(
+														'Renew now for %1$s (%2$s), sub %3$d, charges the next period',
+														'chip-for-formidable-forms'
+													),
+													$frm_chip_who,
+													$frm_chip_label,
+													(int) $frm_chip_sub->id
+												);
+												?>
+												<a href="<?php echo esc_url( $frm_chip_renew_url ); ?>"
+												class="button button-small"
+												aria-label="<?php echo esc_attr( $frm_chip_renew_label ); ?>">
+												<?php esc_html_e( 'Renew now', 'chip-for-formidable-forms' ); ?>
+												</a>
+												<?php } else { ?>
+												&mdash;
+												<?php } ?>
 							</td>
 						</tr>
 					<?php } ?>

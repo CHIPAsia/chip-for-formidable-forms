@@ -465,6 +465,50 @@ class FrmChipRenewals {
 	}
 
 	/**
+	 * Charge a healthy subscription before its next cycle arrives.
+	 *
+	 * This is a different act from a retry and is kept separate so the two cannot
+	 * be confused. A retry collects money already owed and leaves the schedule
+	 * alone; this brings the next cycle forward, so the payer is billed now for a
+	 * period they have not been billed for and every later charge moves up with it.
+	 *
+	 * The limits that apply to retries are deliberately not applied: those exist
+	 * because repeated failures mean a dead card, whereas an early charge on a
+	 * healthy subscription is a single deliberate decision. The subscription was
+	 * already charged successfully, so it is not burning a retry slot.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return string|WP_Error 'charged', 'failed', or the reason it was refused.
+	 */
+	public static function charge_early( $subscription ) {
+		if ( in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true ) ) {
+			return new WP_Error(
+				'chip_early_not_live',
+				__(
+					'This subscription has been cancelled, so it will not be charged again.',
+					'chip-for-formidable-forms'
+				)
+			);
+		}
+
+		if ( 'active' !== (string) $subscription->status ) {
+			return new WP_Error(
+				'chip_early_not_active',
+				__( 'Only an active subscription can be renewed early.', 'chip-for-formidable-forms' )
+			);
+		}
+
+		if ( '' === (string) $subscription->sub_id ) {
+			return new WP_Error(
+				'chip_early_no_token',
+				__( 'This subscription has no saved card to charge.', 'chip-for-formidable-forms' )
+			);
+		}
+
+		return self::charge( $subscription );
+	}
+
+	/**
 	 * Put a failed subscription back into rotation.
 	 *
 	 * @param stdClass $subscription Subscription row.

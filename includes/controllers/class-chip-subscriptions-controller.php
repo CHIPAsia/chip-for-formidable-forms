@@ -161,11 +161,19 @@ class FrmChipSubscriptionsController {
 			return;
 		}
 
-		// A manual retry is always offered, matching the subscriptions screen: an
-		// admin may need to take a payment early, or re-run one that the schedule
-		// has not reached yet. Only a subscription the payer has ended is excluded,
-		// because charging it would take money they have asked to stop.
-		$can_retry = ! in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true );
+		/*
+		 * Two distinct actions, because they mean different things.
+		 *
+		 * A RETRY collects money already owed — the charge failed, or the cron has
+		 * not caught up with a date that has passed. It never moves the schedule.
+		 *
+		 * A RENEW NOW brings the next cycle forward. The payer is charged now for a
+		 * period they have not been billed for, and the schedule moves up. Offering
+		 * only "Retry now" on a healthy subscription hid that difference: pressing
+		 * it took money early and silently shifted every future charge.
+		 */
+		$can_retry     = self::can_retry( $subscription );
+		$can_renew_now = self::can_renew_now( $subscription );
 
 		?>
 		<div class="misc-pub-section">
@@ -173,11 +181,11 @@ class FrmChipSubscriptionsController {
 			<span class="frm_link_label">
 				<?php echo esc_html( $summary ); ?>
 			</span>
-			<?php if ( $can_retry ) { ?>
+			<?php if ( $can_retry || $can_renew_now ) { ?>
 				<?php
 				// A button, not a link: this performs an action on the current
 				// page rather than navigating, and the label names the payer so a
-				// screen reader does not announce the same "Retry now" every time.
+				// screen reader does not announce the same label every time.
 				$frm_chip_label = $summary
 					? sprintf(
 						/* translators: %s: the renewal summary, e.g. "Renews 19 Sep 2026". */
@@ -187,16 +195,32 @@ class FrmChipSubscriptionsController {
 					: __( 'Retry now', 'chip-for-formidable-forms' );
 
 				$frm_chip_failed = __( 'The retry could not be sent. Please try again.', 'chip-for-formidable-forms' );
+
+				$frm_chip_action = $can_retry ? 'retry' : 'renew';
+				$frm_chip_text   = $can_retry
+					? __( 'Retry now', 'chip-for-formidable-forms' )
+					: __( 'Renew now', 'chip-for-formidable-forms' );
+
+				if ( ! $can_retry ) {
+					$frm_chip_label = $summary
+						? sprintf(
+							/* translators: %s: the renewal summary, e.g. "Next charge on 13 Oct 2026". */
+							__( 'Renew now, charging the next period early. %s', 'chip-for-formidable-forms' ),
+							$summary
+						)
+						: __( 'Renew now, charging the next period early.', 'chip-for-formidable-forms' );
+				}
 				?>
 				<button type="button"
 					class="frm_chip_retry_renewal button button-small"
 					data-sub="<?php echo absint( $subscription->id ); ?>"
+					data-mode="<?php echo esc_attr( $frm_chip_action ); ?>"
 					data-nonce="<?php echo esc_attr( wp_create_nonce( 'frm_chip_retry_renewal' ) ); ?>"
 					data-working="<?php echo esc_attr__( 'Working…', 'chip-for-formidable-forms' ); ?>"
 					data-failed="<?php echo esc_attr( $frm_chip_failed ); ?>"
 					aria-label="<?php echo esc_attr( $frm_chip_label ); ?>"
 					style="margin-left:6px;">
-					<?php esc_html_e( 'Retry now', 'chip-for-formidable-forms' ); ?>
+					<?php echo esc_html( $frm_chip_text ); ?>
 				</button>
 				<?php
 				// The AJAX result is inserted next to the button, which is silent
@@ -247,7 +271,14 @@ class FrmChipSubscriptionsController {
 		check_ajax_referer( 'frm_chip_retry_renewal', 'nonce' );
 		FrmAppHelper::permission_check( 'frm_change_settings' );
 
-		// A cancelled subscription should not be revived by a retry; the payer
+		// Which action was asked for. The button states it, but the server decides
+		// what each one is allowed to do rather than trusting the form: a request
+		// claiming "renew" on a subscription that is already past due is treated as
+		// the retry it really is, so the schedule cannot be moved by dressing an
+		// early renewal up as a retry.
+		$mode = isset( $_POST['mode'] ) ? sanitize_key( wp_unslash( $_POST['mode'] ) ) : 'retry';
+
+		// A cancelled subscription should not be revived by either action; the payer
 		// asked for it to stop.
 		if ( in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true ) ) {
 			self::respond(
@@ -259,17 +290,40 @@ class FrmChipSubscriptionsController {
 			);
 		}
 
-		// A manual attempt is allowed on any subscription that is not cancelled,
-		// including one already marked failed, so a payer who topped their card
-		// up late can still be charged. The safety limits still apply.
-		$result = FrmChipRenewals::charge_manually( $subscription );
+		// A retry collects money already owed, so it is refused when nothing is
+		// owed. This is the server's own check: hiding the button on a healthy
+		// subscription is not enough on its own, because a request can be replayed.
+		if ( 'retry' === $mode && ! self::can_retry( $subscription ) ) {
+			self::respond(
+				false,
+				__(
+					'Nothing is owed on this subscription yet. Use Renew now to charge the next period early.',
+					'chip-for-formidable-forms'
+				)
+			);
+		}
+
+		// An early renewal is only for a healthy subscription. On a failed one the
+		// intent is a retry, so it is treated as one.
+		if ( 'renew' === $mode && self::can_retry( $subscription ) ) {
+			$mode = 'retry';
+		}
+
+		$result = 'renew' === $mode
+			? FrmChipRenewals::charge_early( $subscription )
+			: FrmChipRenewals::charge_manually( $subscription );
 
 		if ( is_wp_error( $result ) ) {
 			self::respond( false, $result->get_error_message() );
 		}
 
 		if ( 'charged' === $result ) {
-			self::respond( true, __( 'Renewal charged.', 'chip-for-formidable-forms' ) );
+			self::respond(
+				true,
+				'renew' === $mode
+					? __( 'Charged now. The next charge moves to the following period.', 'chip-for-formidable-forms' )
+					: __( 'Renewal charged.', 'chip-for-formidable-forms' )
+			);
 		}
 
 		if ( 'failed' === $result ) {
@@ -452,15 +506,26 @@ class FrmChipSubscriptionsController {
 	 * @return void
 	 */
 	public static function handle_page_actions() {
-		// The nonce is verified immediately below.
+		// The nonces are verified immediately below.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$sub_id = isset( $_GET['frmchip_retry'] ) ? absint( $_GET['frmchip_retry'] ) : 0;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$renew_id = isset( $_GET['frmchip_renew'] ) ? absint( $_GET['frmchip_renew'] ) : 0;
+
+		$mode = '';
+
+		if ( $sub_id ) {
+			$mode = 'retry';
+		} elseif ( $renew_id ) {
+			$sub_id = $renew_id;
+			$mode   = 'renew';
+		}
 
 		if ( ! $sub_id ) {
 			return;
 		}
 
-		check_admin_referer( 'frm_chip_retry_' . $sub_id );
+		check_admin_referer( 'frm_chip_' . $mode . '_' . $sub_id );
 		FrmAppHelper::permission_check( 'frm_change_settings' );
 
 		$subscriptions = new FrmTransLiteSubscription();
@@ -479,13 +544,32 @@ class FrmChipSubscriptionsController {
 						'chip-for-formidable-forms'
 					),
 				);
+			} elseif ( 'retry' === $mode && ! self::can_retry( $subscription ) ) {
+				// Nothing is owed, so a retry is not what the merchant wants.
+				$notice = array(
+					'error',
+					__(
+						'Nothing is owed on this subscription yet. Use Renew now to charge the next period early.',
+						'chip-for-formidable-forms'
+					),
+				);
 			} else {
-				$result = FrmChipRenewals::charge_manually( $subscription );
+				$result = 'renew' === $mode
+					? FrmChipRenewals::charge_early( $subscription )
+					: FrmChipRenewals::charge_manually( $subscription );
 
 				if ( is_wp_error( $result ) ) {
 					$notice = array( 'error', $result->get_error_message() );
 				} elseif ( 'charged' === $result ) {
-					$notice = array( 'success', __( 'Renewal charged.', 'chip-for-formidable-forms' ) );
+					$notice = array(
+						'success',
+						'renew' === $mode
+							? __(
+								'Charged now. The next charge moves to the following period.',
+								'chip-for-formidable-forms'
+							)
+							: __( 'Renewal charged.', 'chip-for-formidable-forms' ),
+					);
 				} elseif ( 'failed' === $result ) {
 					$fresh = $subscriptions->get_one( $sub_id );
 					$meta  = self::get_meta( $fresh );
@@ -614,18 +698,91 @@ class FrmChipSubscriptionsController {
 			$meta  = self::get_meta( $sub );
 
 			$rows[] = array(
-				'subscription' => $sub,
-				'entry'        => $entry,
-				'form'         => $entry ? FrmForm::getOne( $entry->form_id ) : null,
-				'payer'        => $entry && isset( $entry->metas ) ? self::first_email( $entry ) : '',
-				'state'        => self::describe_renewal( $sub ),
-				'failures'     => isset( $meta['chip_renewal_failures'] ) ? (int) $meta['chip_renewal_failures'] : 0,
-				'remaining'    => FrmChipRenewals::remaining_attempts( $sub ),
-				'can_retry'    => ! in_array( (string) $sub->status, array( 'future_cancel', 'canceled' ), true ),
+				'subscription'  => $sub,
+				'entry'         => $entry,
+				'form'          => $entry ? FrmForm::getOne( $entry->form_id ) : null,
+				'payer'         => $entry && isset( $entry->metas ) ? self::first_email( $entry ) : '',
+				'state'         => self::describe_renewal( $sub ),
+				'failures'      => isset( $meta['chip_renewal_failures'] ) ? (int) $meta['chip_renewal_failures'] : 0,
+				'remaining'     => FrmChipRenewals::remaining_attempts( $sub ),
+				'can_retry'     => self::can_retry( $sub ),
+				'can_renew_now' => self::can_renew_now( $sub ),
 			);
 		}
 
 		return $rows;
+	}
+
+	/**
+	 * Whether a row should offer a "retry now" action.
+	 *
+	 * A retry is meaningful only when collection is stuck: the subscription is on
+	 * hold after a failed attempt, or it is still marked active but its charge
+	 * date has passed because the cron has not run yet. On a subscription that is
+	 * comfortably inside its paid period a retry would take money for a period
+	 * already paid for, so it is not offered — that is a different action.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return bool
+	 */
+	public static function can_retry( $subscription ) {
+		if ( in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true ) ) {
+			return false;
+		}
+
+		// A stored token is required, so the retry cannot fail for that reason.
+		if ( '' === (string) $subscription->sub_id ) {
+			return false;
+		}
+
+		if ( 'failed' === (string) $subscription->status ) {
+			return true;
+		}
+
+		return self::is_past_due( $subscription );
+	}
+
+	/**
+	 * Whether a row should offer to bring the next cycle forward.
+	 *
+	 * This is the honest counterpart to the retry: the subscription is healthy and
+	 * not yet due, so charging now is a deliberate early renewal. It moves the
+	 * schedule, which a retry never should.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return bool
+	 */
+	public static function can_renew_now( $subscription ) {
+		if ( in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true ) ) {
+			return false;
+		}
+
+		if ( '' === (string) $subscription->sub_id ) {
+			return false;
+		}
+
+		return 'active' === (string) $subscription->status && ! self::is_past_due( $subscription );
+	}
+
+	/**
+	 * Whether the charge date has arrived.
+	 *
+	 * A missing or zeroed date means there is nothing to collect, so it is not
+	 * treated as due.
+	 *
+	 * @param stdClass $subscription Subscription row.
+	 * @return bool
+	 */
+	private static function is_past_due( $subscription ) {
+		$due = isset( $subscription->next_bill_date ) ? (string) $subscription->next_bill_date : '';
+
+		if ( '' === $due || '0000-00-00' === $due ) {
+			return false;
+		}
+
+		// Compared in UTC against the stored date, so the answer does not change
+		// with the site's timezone or the hour of the day.
+		return $due <= gmdate( 'Y-m-d' );
 	}
 
 	/**
