@@ -1,5 +1,8 @@
 == Changelog ==
 
+= 1.0.3 2026-09-13 =
+* Fixed - "Retry now" was offered on every subscription that was not cancelled, including a healthy one with weeks left in its paid period. Pressing it charged the payer early and moved every later charge forward, so a subscription paid until November could be billed again and then owe from December. The two actions are now separate: Retry now collects a payment that is actually owed and never changes the schedule, while Renew now charges the next period early and says so.
+
 = 1.0.2 2026-09-13 =
 * Fixed - A refund left the subscription it belonged to running, with no record that money had been returned. The refund is now recorded against the subscription and shown on the subscriptions screen next to the next charge, so a payer is not charged again for a period that was refunded without the merchant being able to see it.
 * Added - Refunding a payment that funds a subscription now offers the choice of refunding only, which leaves the subscription running, or refunding and cancelling it. The cancel is only sent after the refund succeeds, so a refund that fails cannot leave a subscription ended for nothing.

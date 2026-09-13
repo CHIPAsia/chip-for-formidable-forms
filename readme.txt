@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, formidable forms, payment, fpx, payment gateway
 Requires at least: 6.3
 Tested up to: 7.1
-Stable tag: 1.0.2
+Stable tag: 1.0.3
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -161,6 +161,9 @@ This plugin communicates with the following CHIP API endpoints:
 
 == Changelog ==
 
+= 1.0.3 2026-09-13 =
+* Fixed - "Retry now" charged a healthy subscription early and moved every later charge forward. Retry now collects a payment that is actually owed and never changes the schedule; Renew now charges the next period early and says so.
+
 = 1.0.2 2026-09-13 =
 * Fixed - A refund left the subscription it belonged to running, with no record that money had been returned. The refund is now recorded against the subscription and shown on the subscriptions screen next to the next charge.
 * Added - Refunding a payment that funds a subscription now offers the choice of refunding only, which leaves the subscription running, or refunding and cancelling it. The cancel is only sent after the refund succeeds.
@@ -200,8 +203,8 @@ This plugin communicates with the following CHIP API endpoints:
 
 == Upgrade Notice ==
 
-= 1.0.2 =
-Fixes an underpayment, a refund that left the subscription running unseen, and a renewal that could move the payer's billing day. Recommended for all sites taking recurring payments.
+= 1.0.3 =
+Fixes "Retry now" charging a healthy subscription early and moving every later charge forward. Recommended for all sites taking recurring payments.
 
 = 1.0.1 =
 Fixes a payment-integrity issue where an underpayment could complete an order, and a blocking issue where a form using an embedded-form field could not take a payment. Also bounds the renewal run, stops a CHIP outage from using up a retry, and adds a subscriptions screen. Update recommended.
