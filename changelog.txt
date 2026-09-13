@@ -1,5 +1,14 @@
 == Changelog ==
 
+= 1.0.2 2026-09-13 =
+* Fixed - A refund left the subscription it belonged to running, with no record that money had been returned. The refund is now recorded against the subscription and shown on the subscriptions screen next to the next charge, so a payer is not charged again for a period that was refunded without the merchant being able to see it.
+* Added - Refunding a payment that funds a subscription now offers the choice of refunding only, which leaves the subscription running, or refunding and cancelling it. The cancel is only sent after the refund succeeds, so a refund that fails cannot leave a subscription ended for nothing.
+* Fixed - A negative amount in the payment action was charged as its positive value. The amount is now refused before that can happen, with the same message as any other unusable amount.
+* Fixed - A currency other than MYR could be selected on a CHIP action and was replaced with MYR on save without explanation. The choice is now shown as fixed to MYR, with the reason stated, so it is never offered as an option that will be discarded.
+* Fixed - A renewal that ran late moved the subscription's billing day forward by however late it ran, permanently, so a payer billed on the 10th could end up billed on the 13th. The next period is now counted from the date the payment was due, and the billing day stays as the payer agreed.
+* Fixed - The subscriptions screen did not match Formidable's own admin screens: it rendered without the Formidable header and at WordPress's default heading size. It now uses Formidable's page shell, so it looks like part of the plugin rather than a separate page.
+* Fixed - The refund options were hidden on any payment without a recorded card type, which included payments confirmed by CHIP's callback rather than the browser. The options now appear for every payment that funds a subscription.
+
 = 1.0.1 2026-09-13 =
 * Fixed - A purchase paid for less than the order completed the payment as if paid in full. The amount CHIP reports is now compared with the order total, and an underpayment is held as pending with the amounts recorded instead of being marked complete.
 * Fixed - A field inside an embedded form (Formidable Pro) could be selected in the field mapping but its value could not be read, so a form using one for the payer's email or phone could not take a payment at all. The value is now resolved from the embedded form's own entry.

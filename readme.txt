@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, formidable forms, payment, fpx, payment gateway
 Requires at least: 6.3
 Tested up to: 7.1
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -161,6 +161,15 @@ This plugin communicates with the following CHIP API endpoints:
 
 == Changelog ==
 
+= 1.0.2 2026-09-13 =
+* Fixed - A refund left the subscription it belonged to running, with no record that money had been returned. The refund is now recorded against the subscription and shown on the subscriptions screen next to the next charge.
+* Added - Refunding a payment that funds a subscription now offers the choice of refunding only, which leaves the subscription running, or refunding and cancelling it. The cancel is only sent after the refund succeeds.
+* Fixed - A negative amount in the payment action was charged as its positive value. The amount is now refused with the same message as any other unusable amount.
+* Fixed - A currency other than MYR could be selected on a CHIP action and was replaced with MYR on save without explanation. The choice is now shown as fixed to MYR, with the reason stated.
+* Fixed - A renewal that ran late moved the subscription's billing day forward by however late it ran, permanently. The next period is now counted from the date the payment was due, so the billing day stays as the payer agreed.
+* Fixed - The subscriptions screen now uses Formidable's own page shell, so it matches the rest of the plugin instead of WordPress's default styling.
+* Fixed - The refund options were hidden on any payment without a recorded card type, which included payments confirmed by CHIP's callback rather than the browser.
+
 = 1.0.1 2026-09-13 =
 * Fixed - A purchase paid for less than the order completed the payment as if paid in full. An underpayment is now held as pending with the amounts recorded.
 * Fixed - A field inside an embedded form (Formidable Pro) could be mapped but its value could not be read, so a form using one for the payer's email or phone could not take a payment.
@@ -190,6 +199,9 @@ This plugin communicates with the following CHIP API endpoints:
 * Signature verified server callbacks with an API fallback, and per-payment locking so the redirect and callback cannot settle a payment twice.
 
 == Upgrade Notice ==
+
+= 1.0.2 =
+Fixes an underpayment, a refund that left the subscription running unseen, and a renewal that could move the payer's billing day. Recommended for all sites taking recurring payments.
 
 = 1.0.1 =
 Fixes a payment-integrity issue where an underpayment could complete an order, and a blocking issue where a form using an embedded-form field could not take a payment. Also bounds the renewal run, stops a CHIP outage from using up a retry, and adds a subscriptions screen. Update recommended.
