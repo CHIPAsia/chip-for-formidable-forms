@@ -19,12 +19,19 @@ $frm_chip_status_labels = array(
 	'canceled'      => __( 'Cancelled', 'chip-for-formidable-forms' ),
 );
 ?>
-<div class="frm_wrap">
-	<div class="frm_page_container">
-		<div class="frm_top_bar">
-			<h1><?php esc_html_e( 'CHIP Subscriptions', 'chip-for-formidable-forms' ); ?></h1>
-		</div>
+<div id="frm-chip-subscriptions-page" class="frm_wrap frm_list_entry_page">
+	<?php
+	// Header rendered the same way core renders every Formidable list screen
+	// (classes/views/frm-entries/list.php). Without this the page has no top bar
+	// and a bare h1, so it reads as a different product sitting inside wp-admin.
+	FrmAppHelper::get_admin_header(
+		array(
+			'label' => __( 'CHIP Subscriptions', 'chip-for-formidable-forms' ),
+		)
+	);
+	?>
 
+	<div class="wrap">
 		<?php if ( '' !== $frm_chip_msg ) { ?>
 			<div class="<?php echo 'success' === $frm_chip_msg_type ? 'frm_message' : 'frm_error_style'; ?>">
 				<?php echo esc_html( $frm_chip_msg ); ?>

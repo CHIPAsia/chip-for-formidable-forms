@@ -25,6 +25,29 @@ class FrmChipSubscriptionsController {
 	const PAGE_SLUG = 'formidable-chip-subscriptions';
 
 	/**
+	 * Whether the subscriptions screen is one of Formidable's "white pages".
+	 *
+	 * Formidable adds frm-white-body to the body class for the screens it styles
+	 * itself, and that class is what carries the h1 sizing, the table margins and
+	 * the white background. Our page is not in core's list, so it renders at
+	 * WordPress defaults on a grey background — visibly a different product
+	 * sitting inside wp-admin. frm_is_white_page is core's own filter for this.
+	 *
+	 * @param bool $is_white_page Whether core already treats this page as white.
+	 * @return bool
+	 */
+	public static function is_white_page( $is_white_page ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$frm_chip_page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+
+		if ( self::PAGE_SLUG === $frm_chip_page ) {
+			return true;
+		}
+
+		return $is_white_page;
+	}
+
+	/**
 	 * Register the subscription screen additions.
 	 *
 	 * @return void

@@ -108,5 +108,15 @@ class FrmChipHooksController {
 		// The payments sidebar carries the payment's own actions plus the
 		// renewal state of the subscription it belongs to.
 		FrmChipSubscriptionsController::load_hooks();
+
+		/*
+		 * Formidable styles its own screens as "white pages" by adding
+		 * frm-white-body to the body class, which is what carries the h1 sizing,
+		 * the table margins and the white background. Our page is not in core's
+		 * list, so without this it renders with WordPress defaults at the wrong
+		 * scale and sits on a grey background instead of matching the screens
+		 * around it. frm_is_white_page is core's own filter for exactly this.
+		 */
+		add_filter( 'frm_is_white_page', 'FrmChipSubscriptionsController::is_white_page' );
 	}
 }
