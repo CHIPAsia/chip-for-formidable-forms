@@ -162,17 +162,12 @@ class FrmChipRenewals {
 			'skipped' => 0,
 		);
 
-		// Counted before the batch, not after: a charge advances the bill date and a
-		// stood-down subscription is taken out of the queue, so counting afterwards
-		// compares against a set that already changed and can go negative.
+		// Counted before the batch so the log can say how much work there was.
 		$was_due = self::count_due_subscriptions();
 		$due     = array_slice( self::get_due_subscriptions(), 0, self::BATCH_SIZE );
 		$started = time();
-		$reached = 0;
 
 		foreach ( $due as $subscription ) {
-			++$reached;
-
 			// Stop before the request runs out of time. The subscription is left
 			// due, so the next run charges it rather than losing it.
 			if ( ( time() - $started ) >= self::TIME_BUDGET ) {
@@ -192,10 +187,21 @@ class FrmChipRenewals {
 			}
 		}
 
-		$summary['remaining'] = max( 0, $was_due - $reached );
+		// What is genuinely left, asked of the database rather than inferred.
+		// Subtracting the rows touched would be wrong: a subscription skipped
+		// because another worker holds its charge lock is still due, and a run that
+		// reported it as done would let a drain loop stop early and leave it for the
+		// next cron slot.
+		$summary['remaining'] = self::count_due_subscriptions();
 
 		if ( $summary['remaining'] > 0 ) {
-			FrmChipHelper::log( 'Renewals deferred to the next run', $summary['remaining'] );
+			FrmChipHelper::log(
+				'Renewals deferred to the next run',
+				array(
+					'was_due' => $was_due,
+					'left'    => $summary['remaining'],
+				)
+			);
 		}
 
 		return $summary;
