@@ -171,8 +171,20 @@ class FrmChipPaymentsController {
 			? $meta['chip_purchase']['payment_method']
 			: '';
 
-		if ( '' === $last ) {
-			return;
+		// The payment method is only a display detail, so a payment without it
+		// still gets the refund choice. Gating the choice on this would hide it
+		// for any payment the plugin did not record a method for — including one
+		// settled by a callback, which is exactly the kind a merchant refunds.
+		if ( '' !== $last ) {
+			?>
+			<div class="misc-pub-section">
+				<?php FrmAppHelper::icon_by_class( 'frmfont frm_credit_card_icon' ); ?>
+				<span class="frm_link_label">
+					<?php esc_html_e( 'Paid with:', 'chip-for-formidable-forms' ); ?>
+					<b><?php echo esc_html( FrmChipPaymentMethods::get_label( $last ) ); ?></b>
+				</span>
+			</div>
+			<?php
 		}
 
 		// A refund on a payment that funds a subscription is a decision about that
@@ -181,16 +193,6 @@ class FrmChipPaymentsController {
 		// and ending the arrangement. When there is a live subscription behind this
 		// payment, offer the choice explicitly instead.
 		$subscription = self::refundable_subscription( $payment );
-
-		?>
-		<div class="misc-pub-section">
-			<?php FrmAppHelper::icon_by_class( 'frmfont frm_credit_card_icon' ); ?>
-			<span class="frm_link_label">
-				<?php esc_html_e( 'Paid with:', 'chip-for-formidable-forms' ); ?>
-				<b><?php echo esc_html( FrmChipPaymentMethods::get_label( $last ) ); ?></b>
-			</span>
-		</div>
-		<?php
 
 		if ( ! $subscription ) {
 			return;
