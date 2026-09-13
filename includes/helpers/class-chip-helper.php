@@ -142,18 +142,55 @@ class FrmChipHelper {
 	 * Formidable resolves shortcodes in the amount setting, so the value can be
 	 * a static figure or a reference to a product/quantity field.
 	 *
+	 * The value is resolved here first rather than trusting prepare_amount()
+	 * alone. That helper runs the resolved string through a numeric regex that
+	 * cannot represent a sign, so '-10.00' comes back as '10.00' and a negative
+	 * amount silently becomes a positive charge. Resolving the raw value first
+	 * lets a sign be rejected before it is lost, which matters because the same
+	 * helper is what a computed total (a quantity times a price) flows through —
+	 * so a wrong calculation lands here as a charge, not as an error.
+	 *
 	 * @param WP_Post  $action Payment action.
 	 * @param stdClass $entry  Entry.
 	 * @param stdClass $form   Form.
-	 * @return int Amount in minor units, 0 when nothing was resolved.
+	 * @return int Amount in minor units, 0 when nothing valid was resolved.
 	 */
 	public static function get_amount_in_minor_units( $action, $entry, $form ) {
 		if ( ! isset( $action->post_content['amount'] ) ) {
 			return 0;
 		}
 
+		$raw = $action->post_content['amount'];
+
+		// The unresolved value, before prepare_amount() reduces it. A sign is
+		// only visible here: the numeric regex in that helper drops it.
+		if ( is_string( $raw ) && str_contains( $raw, '[' ) ) {
+			$resolved = FrmTransLiteAppHelper::process_shortcodes(
+				array(
+					'value' => $raw,
+					'form'  => $form,
+					'entry' => $entry,
+				)
+			);
+		} else {
+			$resolved = $raw;
+		}
+
+		// A resolved string that still holds a shortcode could not be resolved.
+		// prepare_amount() would turn it into 0, but returning early is explicit.
+		if ( is_string( $resolved ) && preg_match( '/\[[^\]]*\]/', $resolved ) ) {
+			return 0;
+		}
+
+		// A negative amount is never a charge. Caught before the sign is lost, so
+		// the merchant gets the amount error rather than a charge for the
+		// absolute value.
+		if ( self::contains_negative( $resolved ) ) {
+			return 0;
+		}
+
 		$amount = FrmTransLiteActionsController::prepare_amount(
-			$action->post_content['amount'],
+			$raw,
 			array(
 				'form'   => $form,
 				'entry'  => $entry,
@@ -162,6 +199,29 @@ class FrmChipHelper {
 		);
 
 		return self::to_minor_units( $amount );
+	}
+
+	/**
+	 * Whether a resolved amount carries a negative figure.
+	 *
+	 * Prepare_amount() returns one formatted total per entry in the setting, so a
+	 * compound value is checked part by part.
+	 *
+	 * @param mixed $value Resolved amount, string or array of strings.
+	 * @return bool
+	 */
+	private static function contains_negative( $value ) {
+		foreach ( (array) $value as $part ) {
+			if ( is_string( $part ) && preg_match( '/-\s*[0-9]/', $part ) ) {
+				return true;
+			}
+
+			if ( is_numeric( $part ) && (float) $part < 0 ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
