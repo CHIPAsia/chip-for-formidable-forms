@@ -338,6 +338,38 @@ class FrmChipActionsController {
 			$full_name = $client_email ? strstr( $client_email, '@', true ) : '';
 		}
 
+		/*
+		 * Check the payer details here, before calling CHIP.
+		 *
+		 * CHIP requires the client email and rejects the whole purchase without it
+		 * ("client: This field may not be blank."), which tells the payer nothing
+		 * about which field of the form is at fault. The common cause is a mapping
+		 * that points at a field the payer never sees — for example a field inside
+		 * an embedded form, or a mapping left over from a field that was deleted —
+		 * so the message names the field by its label and says where to fix it.
+		 */
+		if ( ! is_email( $client_email ) ) {
+			return new WP_Error(
+				'chip_client_email_missing',
+				self::missing_billing_field_message(
+					$action->post_content['chip_billing_email'],
+					__( 'email address', 'chip-for-formidable-forms' ),
+					$form
+				)
+			);
+		}
+
+		if ( '' === $full_name ) {
+			return new WP_Error(
+				'chip_client_name_missing',
+				self::missing_billing_field_message(
+					$action->post_content['chip_billing_first_name'],
+					__( 'name', 'chip-for-formidable-forms' ),
+					$form
+				)
+			);
+		}
+
 		$product_name = isset( $action->post_content['chip_product_name'] )
 			? trim( (string) $action->post_content['chip_product_name'] )
 			: '';
@@ -485,6 +517,118 @@ class FrmChipActionsController {
 		}
 
 		return $resolved;
+	}
+
+	/**
+	 * Explain which mapped field produced no usable value.
+	 *
+	 * A mapping can point at a field the payer never fills — most often one inside
+	 * an embedded form, or a leftover id from a field that was deleted. Naming the
+	 * field by its label, and saying where the mapping lives, turns a dead end into
+	 * a fix the merchant can make in a few seconds.
+	 *
+	 * @param mixed  $field_id Mapped field id (may be 0 or '' when unmapped).
+	 * @param string $what     What was needed, e.g. "email address".
+	 * @param object $form     The form the payment action belongs to.
+	 * @return string
+	 */
+	private static function missing_billing_field_message( $field_id, $what, $form ) {
+		$field_id = (int) $field_id;
+
+		if ( ! $field_id ) {
+			return sprintf(
+				/* translators: 1: what is missing (e.g. "email address"), 2: form name. */
+				__(
+					'This payment cannot start: no %1$s is set up for it.',
+					'chip-for-formidable-forms'
+				)
+				. ' '
+				. sprintf(
+					/* translators: 1: what is missing, 2: form name. */
+					__(
+						'In Settings → Actions, pick the field holding the payer\'s %1$s. (Form: %2$s)',
+						'chip-for-formidable-forms'
+					),
+					$what,
+					$form->name
+				),
+				$what,
+				$form->name
+			);
+		}
+
+		$field = FrmField::getOne( $field_id );
+
+		if ( ! $field ) {
+			return sprintf(
+				/* translators: 1: what is missing, 2: field id, 3: form name. */
+				__(
+					'This payment cannot start: the field set up for the payer\'s %1$s no longer exists.',
+					'chip-for-formidable-forms'
+				)
+				. ' '
+				. sprintf(
+					/* translators: 1: field id, 2: form name. */
+					__(
+						'In Settings → Actions, pick a field again (was %1$d). (Form: %2$s)',
+						'chip-for-formidable-forms'
+					),
+					$field_id,
+					$form->name
+				),
+				$what,
+				$field_id,
+				$form->name
+			);
+		}
+
+		// Name the form the field actually lives in, so a field inside an embedded
+		// form is obvious rather than confusing.
+		$owning_form = FrmForm::getOne( (int) $field->form_id );
+
+		$where = $owning_form && (int) $owning_form->id !== (int) $form->id
+			? sprintf(
+				/* translators: %s: form name. */
+				__( 'inside the "%s" form', 'chip-for-formidable-forms' ),
+				$owning_form->name
+			)
+			: sprintf(
+				/* translators: %s: form name. */
+				__( 'in the "%s" form', 'chip-for-formidable-forms' ),
+				$form->name
+			);
+
+		return sprintf(
+			/* translators: 1: what is missing, 2: field label, 3: where the field lives, 4: form name. */
+			__(
+				'This payment cannot start: the payer\'s %1$s was empty.',
+				'chip-for-formidable-forms'
+			)
+			. ' '
+			. sprintf(
+				/* translators: 1: field label, 2: where the field lives, 3: what is missing. */
+				__(
+					'It is read from the "%1$s" field %2$s, so the payer must fill it (%3$s).',
+					'chip-for-formidable-forms'
+				),
+				$field->name,
+				$where,
+				$what
+			)
+			. ' '
+			. sprintf(
+				/* translators: %s: form name. */
+				__(
+					'To read a different field, change the mapping in the form\'s Settings → Actions. (Form: %s)',
+					'chip-for-formidable-forms'
+				),
+				$form->name
+			),
+			$what,
+			$field->name,
+			$where,
+			$form->name
+		);
 	}
 
 	/**
