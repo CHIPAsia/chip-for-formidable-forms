@@ -1,5 +1,8 @@
 == Changelog ==
 
+= 1.0.5 2026-09-16 =
+* Fixed - Every paid submission logged PHP warnings from the form plugin ("Undefined array key success_url" and two more) and passed an empty value where PHP 8.1+ expects a string. This happened when the form's own confirmation was left on the default message: sending the payer to the payment page then made the form plugin read redirect settings the form never had. The missing settings are now supplied, so a paid submission logs nothing.
+
 = 1.0.4 2026-09-16 =
 * Fixed - If the payment action read the payer's email or name from a field that was left empty, the whole purchase failed with a message from the payment gateway naming a field the payer could not see, and no indication of where to fix it. The details are now checked before the payment is created, and the message names the field by its label, the form it belongs to, and where the mapping can be changed.
 
