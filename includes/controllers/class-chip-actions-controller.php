@@ -699,6 +699,43 @@ class FrmChipActionsController {
 			return $method;
 		}
 
+		/*
+		 * Formidable's redirect path reads its settings straight off the form's own
+		 * options:
+		 *
+		 *   redirect_after_submit()          -> options['success_url']
+		 *   redirect_after_submit_using_js() -> options['redirect_delay_msg']
+		 *                                              ['redirect_delay_time']
+		 *
+		 * Those are written when the form's own confirmation IS a redirect. A form
+		 * left on the default "show a message" confirmation never gets them, so
+		 * forcing the redirect here made Formidable read keys that do not exist —
+		 * an "Undefined array key" warning each time, and a null handed to trim()
+		 * and str_contains() on PHP 8.1+.
+		 *
+		 * Fill in only what is missing, so a merchant who deliberately configured a
+		 * delayed redirect keeps their own values. redirect_delay stays empty, which
+		 * is also what makes Formidable take the immediate wp_redirect() path rather
+		 * than the JavaScript one.
+		 */
+		$defaults = array(
+			'success_url'         => '',
+			'redirect_delay'      => false,
+			'redirect_delay_msg'  => '',
+			'redirect_delay_time' => 0,
+			'open_in_new_tab'     => false,
+		);
+
+		$options = is_array( $form->options ) ? $form->options : array();
+
+		foreach ( $defaults as $key => $value ) {
+			if ( ! array_key_exists( $key, $options ) ) {
+				$options[ $key ] = $value;
+			}
+		}
+
+		$form->options = $options;
+
 		return 'redirect';
 	}
 
