@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, formidable forms, payment, fpx, payment gateway
 Requires at least: 6.3
 Tested up to: 7.1
-Stable tag: 1.0.3
+Stable tag: 1.0.4
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -161,6 +161,9 @@ This plugin communicates with the following CHIP API endpoints:
 
 == Changelog ==
 
+= 1.0.4 2026-09-16 =
+* Fixed - A payment action that read the payer's email or name from a field left empty failed the whole purchase with a gateway message naming a field the payer could not see. The details are now checked first, and the message names the field and where to change the mapping.
+
 = 1.0.3 2026-09-13 =
 * Fixed - "Retry now" charged a healthy subscription early and moved every later charge forward. Retry now collects a payment that is actually owed and never changes the schedule; Renew now charges the next period early and says so.
 
@@ -203,8 +206,8 @@ This plugin communicates with the following CHIP API endpoints:
 
 == Upgrade Notice ==
 
-= 1.0.3 =
-Fixes "Retry now" charging a healthy subscription early and moving every later charge forward. Recommended for all sites taking recurring payments.
+= 1.0.4 =
+Fixes a checkout that failed when a mapped payer field was left empty, showing a gateway error instead of naming the field. Recommended for all sites.
 
 = 1.0.1 =
 Fixes a payment-integrity issue where an underpayment could complete an order, and a blocking issue where a form using an embedded-form field could not take a payment. Also bounds the renewal run, stops a CHIP outage from using up a retry, and adds a subscriptions screen. Update recommended.
