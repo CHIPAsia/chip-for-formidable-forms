@@ -23,6 +23,7 @@ README.md export-ignore
 
 # Release zip: exclude tests and dev config
 phpcs.xml export-ignore
+scripts/ export-ignore
 docker-compose.yml export-ignore
 Dockerfile export-ignore
 .wp-env.json export-ignore
