@@ -1,5 +1,11 @@
 == Changelog ==
 
+= 1.0.7 2026-09-25 =
+* Added - The build now checks the plugin's declared compatibility on every change. The minimum WordPress and PHP versions are stated in four places (the plugin header, readme.txt, README.md and the lint configuration) and nothing kept them equal, so the copy a merchant reads could drift from the copy the installer checks. A mismatch now fails the build.
+* Fixed - The plugin's minimum WordPress and PHP versions are now declared in the plugin header as well as readme.txt. WordPress reads the header to decide whether a site may install or update at all; before this it read only readme.txt, so an unsupported site was never stopped and the requirement shown on the plugin page came from the other file.
+* Added - The build checks that every screenshot the readme names actually ships (a declared screenshot with no image makes the plugin page serve a 404), that the readme describes only the release being installed, and that the version number agrees in every file that carries it.
+* Changed - The compatibility lint is now a real gate in CI. It ran with its result discarded, so it could not fail a build and any finding it made was invisible.
+
 = 1.0.6 2026-09-24 =
 * Fixed - The subscriptions screen printed a PHP warning into every healthy subscription's Actions column ("Undefined variable $frm_chip_who"). The payer string used to build each control's accessible name was defined inside the "Retry now" branch and read again in the "Renew now" branch, so every subscription with nothing owed — the common case — rendered the notice on the merchant's screen. It is now resolved once, above the branch, and each row keeps a distinct accessible name.
 

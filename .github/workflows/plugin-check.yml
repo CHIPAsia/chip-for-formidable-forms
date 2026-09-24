@@ -38,8 +38,7 @@ jobs:
           vendor/bin/phpcs --standard=PHPCompatibilityWP \
             --runtime-set testVersion 7.4- \
             --extensions=php \
-            --ignore=vendor,node_modules . \
-            || true
+            --ignore=vendor,node_modules .
 
   standards:
     name: Coding standards
@@ -57,6 +56,9 @@ jobs:
 
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
+
+      - name: Release metadata
+        run: ./scripts/check-release-metadata.sh
 
       - name: PHPCS (WordPress standards)
         run: vendor/bin/phpcs --standard=phpcs.xml .

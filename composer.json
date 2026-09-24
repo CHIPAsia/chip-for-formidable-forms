@@ -1,6 +1,6 @@
 {
 	"name": "chipasia/chip-for-formidable-forms",
-	"version": "1.0.6",
+	"version": "1.0.7",
 	"description": "CHIP payment gateway for Formidable Forms.",
 	"license": "GPL-3.0-or-later",
 	"require-dev": {

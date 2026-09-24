@@ -110,13 +110,19 @@ We follow [Semantic Versioning](https://semver.org/) adapted for WordPress plugi
 
 - [ ] `chip-for-formidable-forms.php` — `Version: X.Y.Z` header
 - [ ] `chip-for-formidable-forms.php` — `FRM_CHIP_MODULE_VERSION` constant
+- [ ] `chip-for-formidable-forms.php` — `Requires at least` / `Requires PHP` still match readme.txt
 - [ ] `readme.txt` — `Stable tag: X.Y.Z`
-- [ ] `readme.txt` — `Tested up to:` updated if needed
-- [ ] `readme.txt` — new entry in the `== Changelog ==` section
-- [ ] `changelog.txt` — new version entry with date
+- [ ] `readme.txt` — `Tested up to:` updated if needed (MAJOR.MINOR only)
+- [ ] `readme.txt` — the `== Changelog ==` section carries **only** the version being shipped
+- [ ] `changelog.txt` — new version entry with date (this file keeps the full history)
 - [ ] `composer.json` — `version` field
+- [ ] `README.md` — requirements still match the declared floors
+- [ ] `.wordpress-org/screenshot-N.png` — exists for every screenshot `readme.txt` names
 - [ ] Run `composer lint` and fix any issues
+- [ ] Run `./scripts/check-release-metadata.sh` — it checks that the floors agree across the plugin header, `readme.txt`, `README.md` and `phpcs.xml`, that the version triplet agrees, that `readme.txt` holds exactly one changelog entry, and that every declared screenshot has a file
 - [ ] Commit, then tag: `git tag -a vX.Y.Z -m "Release X.Y.Z" && git push origin vX.Y.Z`
+
+> **`readme.txt` carries only the current release.** WordPress.org renders the changelog from `readme.txt`, so it must hold exactly one version entry; `changelog.txt` keeps the full history.
 
 ## Questions?
 
