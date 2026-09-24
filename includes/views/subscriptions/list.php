@@ -124,6 +124,21 @@ $frm_chip_status_labels = array(
 						$frm_chip_label = isset( $frm_chip_status_labels[ (string) $frm_chip_sub->status ] )
 							? $frm_chip_status_labels[ (string) $frm_chip_sub->status ]
 							: ucfirst( str_replace( '_', ' ', (string) $frm_chip_sub->status ) );
+
+						// Every row's control reads either "Retry now" or "Renew now",
+						// so without a distinguishing name a screen reader announces the
+						// same label for each row and the merchant cannot tell which
+						// subscription they are about to charge. The payer and status can
+						// repeat across rows (the same payer with two active
+						// subscriptions), so the subscription id is what makes it unique.
+						// Resolved here, above the branch, because both controls need it.
+						$frm_chip_who = $frm_chip_entry && $frm_chip_entry->name
+							? $frm_chip_entry->name
+							: sprintf(
+								/* translators: %d: entry id. */
+								__( 'entry %d', 'chip-for-formidable-forms' ),
+								$frm_chip_entry ? (int) $frm_chip_entry->id : 0
+							);
 						?>
 						<tr>
 							<?php
@@ -197,21 +212,8 @@ $frm_chip_status_labels = array(
 									);
 									?>
 									<?php
-									// Every row's link reads "Retry now", so without a
-									// distinguishing name a screen reader announces the
-									// same label for each row and the merchant cannot
-									// tell which subscription they are about to charge.
-									// The payer and status can repeat across rows (the
-									// same payer with two active subscriptions), so the
-									// subscription id is what makes it unique.
-									$frm_chip_who = $frm_chip_entry && $frm_chip_entry->name
-										? $frm_chip_entry->name
-										: sprintf(
-											/* translators: %d: entry id. */
-											__( 'entry %d', 'chip-for-formidable-forms' ),
-											$frm_chip_entry ? (int) $frm_chip_entry->id : 0
-										);
-
+									// The control's accessible name is built above, from the
+									// payer, the status and the subscription id.
 									$frm_chip_retry_label = sprintf(
 												/* translators: 1: payer name, 2: status, 3: subscription id. */
 										__( 'Retry now for %1$s (%2$s), sub %3$d', 'chip-for-formidable-forms' ),
