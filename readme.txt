@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, formidable forms, payment, fpx, payment gateway
 Requires at least: 6.3
 Tested up to: 7.1
-Stable tag: 1.0.5
+Stable tag: 1.0.6
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -161,62 +161,10 @@ This plugin communicates with the following CHIP API endpoints:
 
 == Changelog ==
 
-= 1.0.5 2026-09-16 =
-* Fixed - Paid submissions logged PHP warnings from the form plugin and passed an empty value where PHP 8.1+ expects a string, when the form's confirmation was left on the default message. Nothing is logged now.
+= 1.0.6 2026-09-24 =
+* Fixed - The subscriptions screen printed a PHP warning into every healthy subscription's Actions column ("Undefined variable $frm_chip_who"). Healthy subscriptions are the common case, so the notice appeared on most rows of the merchant's screen. Nothing is logged now.
 
-= 1.0.4 2026-09-16 =
-* Fixed - A payment action that read the payer's email or name from a field left empty failed the whole purchase with a gateway message naming a field the payer could not see. The details are now checked first, and the message names the field and where to change the mapping.
-
-= 1.0.3 2026-09-13 =
-* Fixed - "Retry now" charged a healthy subscription early and moved every later charge forward. Retry now collects a payment that is actually owed and never changes the schedule; Renew now charges the next period early and says so.
-
-= 1.0.2 2026-09-13 =
-* Fixed - A refund left the subscription it belonged to running, with no record that money had been returned. The refund is now recorded against the subscription and shown on the subscriptions screen next to the next charge.
-* Added - Refunding a payment that funds a subscription now offers the choice of refunding only, which leaves the subscription running, or refunding and cancelling it. The cancel is only sent after the refund succeeds.
-* Fixed - A negative amount in the payment action was charged as its positive value. The amount is now refused with the same message as any other unusable amount.
-* Fixed - A currency other than MYR could be selected on a CHIP action and was replaced with MYR on save without explanation. The choice is now shown as fixed to MYR, with the reason stated.
-* Fixed - A renewal that ran late moved the subscription's billing day forward by however late it ran, permanently. The next period is now counted from the date the payment was due, so the billing day stays as the payer agreed.
-* Fixed - The subscriptions screen now uses Formidable's own page shell, so it matches the rest of the plugin instead of WordPress's default styling.
-* Fixed - The refund options were hidden on any payment without a recorded card type, which included payments confirmed by CHIP's callback rather than the browser.
-
-= 1.0.1 2026-09-13 =
-* Fixed - A purchase paid for less than the order completed the payment as if paid in full. An underpayment is now held as pending with the amounts recorded.
-* Fixed - A field inside an embedded form (Formidable Pro) could be mapped but its value could not be read, so a form using one for the payer's email or phone could not take a payment.
-* Fixed - A CHIP outage was counted as a failed charge attempt, using up a retry and pushing the subscription's bill date forward. A timeout, a 5xx or an unreadable response now defers the renewal.
-* Fixed - The renewal run charged every due subscription in one request, so a store with many due at once lost the request part-way and skipped the rest until the next run. The run is now bounded.
-* Fixed - A subscription with no saved card held a place in every run and blocked subscriptions that could be charged. It now stands down.
-* Fixed - The renewal run reported nothing left while a subscription was still due, so a retry loop stopped early.
-* Fixed - A site that updated the plugin rather than reactivating it could be left with no renewal schedule at all.
-* Fixed - The payments screen offered a retry only after a recorded failure, so a healthy subscription showed no action. Both screens now agree.
-* Fixed - The card-update link emailed to a payer was spent before it was opened. It now opens a fresh checkout when used.
-* Added - A CHIP Subscriptions screen with renewal state, attempts remaining and a Retry now action.
-* Added - Renewal failure emails to the merchant and the payer, with a link for the payer to supply a new card.
-* Added - Retries capped at 15 charge attempts per card per 30 days and 10 consecutive failures.
-* Changed - The subscription list is paged, and its controls are labelled and announced for assistive technology.
-
-= 1.0.0 2026-09-11 =
-* First release.
-* CHIP registered as a payment gateway for Formidable Forms, alongside Stripe, Square and PayPal.
-* One-time and recurring payments through the CHIP hosted checkout.
-* Recurring payments are charged from the site on a schedule, with retries on days 3, 5 and 7 after a failed attempt.
-* A CHIP Subscriptions screen lists every subscription with its renewal state and a Retry now action.
-* Renewal failures email the merchant and the payer, and the payer can supply a new card from the email.
-* Payment method selection, globally and per form, with runtime resolution of the DuitNow QR and ShopeePay identifier groups.
-* Phone as a mappable client field, sent exactly as the payer typed it.
-* Fields inside an embedded form (Pro) offered in the field mapping.
-* Refunds and subscription cancellation from the Formidable payments screen.
-* Signature verified server callbacks with an API fallback, and per-payment locking so the redirect and callback cannot settle a payment twice.
-
-== Upgrade Notice ==
-
-= 1.0.5 =
-Fixes PHP warnings logged on every paid submission. Recommended for all sites.
-
-= 1.0.1 =
-Fixes a payment-integrity issue where an underpayment could complete an order, and a blocking issue where a form using an embedded-form field could not take a payment. Also bounds the renewal run, stops a CHIP outage from using up a retry, and adds a subscriptions screen. Update recommended.
-
-= 1.0.0 =
-First release.
+[See changelog for all versions](https://raw.githubusercontent.com/CHIPAsia/chip-for-formidable-forms/main/changelog.txt).
 
 == Links ==
 

@@ -1,5 +1,8 @@
 == Changelog ==
 
+= 1.0.6 2026-09-24 =
+* Fixed - The subscriptions screen printed a PHP warning into every healthy subscription's Actions column ("Undefined variable $frm_chip_who"). The payer string used to build each control's accessible name was defined inside the "Retry now" branch and read again in the "Renew now" branch, so every subscription with nothing owed — the common case — rendered the notice on the merchant's screen. It is now resolved once, above the branch, and each row keeps a distinct accessible name.
+
 = 1.0.5 2026-09-16 =
 * Fixed - Every paid submission logged PHP warnings from the form plugin ("Undefined array key success_url" and two more) and passed an empty value where PHP 8.1+ expects a string. This happened when the form's own confirmation was left on the default message: sending the payer to the payment page then made the form plugin read redirect settings the form never had. The missing settings are now supplied, so a paid submission logs nothing.
 
