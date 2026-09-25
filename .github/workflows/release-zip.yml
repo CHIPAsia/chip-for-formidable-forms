@@ -3,6 +3,15 @@ name: Create Release Zip
 on:
   release:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and attach (for example v1.0.7)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   build-and-release:
@@ -10,8 +19,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Resolve the tag being released
+        id: release
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG"
+
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Build the tagged commit, not the tip of the default branch, so the
+          # archive can never contain work that the tag does not include.
+          ref: ${{ steps.release.outputs.tag }}
 
       - name: Prepare plugin folder
         run: |
@@ -37,17 +57,29 @@ jobs:
           cd dist && zip -r ../chip-for-formidable-forms.zip chip-for-formidable-forms
           echo "Created chip-for-formidable-forms.zip (root folder: chip-for-formidable-forms/)"
 
-      - name: Verify no build-time file shipped
+      - name: Verify the archive matches the tag
         run: |
           if unzip -l chip-for-formidable-forms.zip | grep -qE '(^|/)(scripts|\.github|vendor|\.wordpress-org)/'; then
             echo "A build-time directory reached the release archive:"
             unzip -l chip-for-formidable-forms.zip | grep -E '(^|/)(scripts|\.github|vendor|\.wordpress-org)/'
             exit 1
           fi
-          echo "Archive contains only what a site runs"
+
+          # The archive must carry the version its tag claims, or a merchant
+          # downloads a file that disagrees with the release page.
+          WANT="${{ steps.release.outputs.tag }}"
+          WANT="${WANT#v}"
+          GOT=$(unzip -p chip-for-formidable-forms.zip chip-for-formidable-forms/chip-for-formidable-forms.php \
+                | grep -m1 '^ \* Version:' | sed 's/.*Version: *//' | tr -d '\r')
+          if [ "$GOT" != "$WANT" ]; then
+            echo "Archive reports version '$GOT' but the tag is '$WANT'"
+            exit 1
+          fi
+
+          echo "Archive is clean and reports version $GOT"
 
       - name: Upload release asset
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" chip-for-formidable-forms.zip --clobber
+          gh release upload "${{ steps.release.outputs.tag }}" chip-for-formidable-forms.zip --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
