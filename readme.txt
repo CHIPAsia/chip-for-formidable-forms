@@ -166,7 +166,7 @@ This plugin communicates with the following CHIP API endpoints:
 * Fixed - The plugin's minimum WordPress and PHP versions are now declared in the plugin header as well as readme.txt. WordPress reads the header to decide whether a site may install or update at all; before this it read only readme.txt, so an unsupported site was never stopped and the requirement shown on the plugin page came from the other file.
 * Added - The build checks that every screenshot the readme names actually ships, that the readme describes only the release being installed, and that the version number agrees in every file that carries it.
 
-[See changelog for all versions](https://raw.githubusercontent.com/CHIPAsia/chip-for-formidable-forms/main/changelog.txt).
+[See changelog for all versions](https://github.com/CHIPAsia/chip-for-formidable-forms/releases).
 
 == Links ==
 

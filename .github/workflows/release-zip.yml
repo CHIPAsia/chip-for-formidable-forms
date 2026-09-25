@@ -1,0 +1,53 @@
+name: Create Release Zip
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build-and-release:
+    name: Build and Upload Release Zip
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Prepare plugin folder
+        run: |
+          # The folder name MUST match the plugin slug, or WordPress installs the
+          # plugin under an unusable directory name.
+          mkdir -p dist/chip-for-formidable-forms
+          git archive HEAD | tar -x -C dist/chip-for-formidable-forms
+
+          # `git archive` honours .gitattributes export-ignore, but that rule only
+          # applies from the commit that carries it. Prune the build-time files
+          # explicitly so a release cut from an older tag still ships a clean
+          # archive rather than whatever that tag's .gitattributes allowed.
+          rm -rf dist/chip-for-formidable-forms/scripts \
+                 dist/chip-for-formidable-forms/.github \
+                 dist/chip-for-formidable-forms/.wordpress-org \
+                 dist/chip-for-formidable-forms/vendor
+
+          echo "Prepared plugin folder"
+          ls -la dist/chip-for-formidable-forms/
+
+      - name: Create zip file
+        run: |
+          cd dist && zip -r ../chip-for-formidable-forms.zip chip-for-formidable-forms
+          echo "Created chip-for-formidable-forms.zip (root folder: chip-for-formidable-forms/)"
+
+      - name: Verify no build-time file shipped
+        run: |
+          if unzip -l chip-for-formidable-forms.zip | grep -qE '(^|/)(scripts|\.github|vendor|\.wordpress-org)/'; then
+            echo "A build-time directory reached the release archive:"
+            unzip -l chip-for-formidable-forms.zip | grep -E '(^|/)(scripts|\.github|vendor|\.wordpress-org)/'
+            exit 1
+          fi
+          echo "Archive contains only what a site runs"
+
+      - name: Upload release asset
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" chip-for-formidable-forms.zip --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
