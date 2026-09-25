@@ -46,14 +46,18 @@ class FrmChipSubscriptionsController {
 	/**
 	 * Whether the current user may manage CHIP subscriptions.
 	 *
-	 * The single decision point. FrmAppHelper::permission_check() also accepts a
-	 * user carrying 'administrator' and prints Formidable's own "you are not
-	 * allowed" message, so this stays consistent with the rest of the plugin.
+	 * The single decision point, deliberately expressed through the same helper
+	 * the handlers use rather than by naming a capability again: asking
+	 * FrmAppHelper whether this capability is refused answers exactly the question
+	 * permission_check() answers, so a control is offered only to a user whose
+	 * press would be allowed. Formidable's helper also accepts a user carrying
+	 * 'administrator', and deferring to it keeps that behaviour without this
+	 * plugin checking for a role itself.
 	 *
 	 * @return bool
 	 */
 	public static function current_user_can_manage() {
-		return current_user_can( self::MANAGE_CAPABILITY ) || current_user_can( 'administrator' );
+		return false === FrmAppHelper::permission_nonce_error( self::MANAGE_CAPABILITY );
 	}
 
 	/**

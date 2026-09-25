@@ -264,6 +264,10 @@ class FrmChipRenewals {
 	 * Charge one subscription for its next period.
 	 *
 	 * @param stdClass $subscription Subscription row.
+	 * @param bool     $early        Charging a cycle that is not due yet. Only a
+	 *                               confirmed "Renew now" sets this; a scheduled
+	 *                               run must not, because a failure on this path
+	 *                               leaves the ladder alone instead of dunning.
 	 * @return string charged|failed|skipped.
 	 */
 	public static function charge( $subscription, $early = false ) {
@@ -582,6 +586,9 @@ class FrmChipRenewals {
 	 * @param stdClass        $subscription Subscription row.
 	 * @param string          $token        Recurring token.
 	 * @param FrmChipSettings $settings     Plugin settings.
+	 * @param bool            $early        Charging a cycle that is not due yet,
+	 *                                      so a failure must not be treated as a
+	 *                                      missed cycle.
 	 * @return string charged|failed|skipped.
 	 */
 	private static function charge_locked( $api, $subscription, $token, $settings, $early = false ) {
@@ -714,6 +721,8 @@ class FrmChipRenewals {
 	 * @param stdClass $subscription Subscription row.
 	 * @param WP_Error $error        Failure.
 	 * @param string   $purchase_id  Purchase ID when one was created.
+	 * @param bool     $early        The cycle was not due, so no dunning and no
+	 *                               change of state.
 	 * @return string failed|skipped.
 	 */
 	private static function handle_charge_failure( $subscription, $error, $purchase_id = '', $early = false ) {
