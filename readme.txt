@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, formidable forms, payment, fpx, payment gateway
 Requires at least: 6.3
 Tested up to: 7.1
-Stable tag: 1.0.7
+Stable tag: 1.0.8
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -161,10 +161,11 @@ This plugin communicates with the following CHIP API endpoints:
 
 == Changelog ==
 
-= 1.0.7 2026-09-25 =
-* Added - The build now checks the plugin's declared compatibility on every change. The minimum WordPress and PHP versions are stated in four places (the plugin header, readme.txt, README.md and the lint configuration) and nothing kept them equal; a mismatch now fails the build instead of reaching your site, where it decides whether an install or update is allowed.
-* Fixed - The plugin's minimum WordPress and PHP versions are now declared in the plugin header as well as readme.txt. WordPress reads the header to decide whether a site may install or update at all; before this it read only readme.txt, so an unsupported site was never stopped and the requirement shown on the plugin page came from the other file.
-* Added - The build checks that every screenshot the readme names actually ships, that the readme describes only the release being installed, and that the version number agrees in every file that carries it.
+= 1.0.8 2026-09-25 =
+* Fixed - "Renew now" could end a perfectly healthy subscription. The button charges the next period early, and if that charge was declined it was handled as though a scheduled payment had failed: the subscription was marked failed, the payer was emailed about money that was not yet owed, and repeated attempts could leave the subscription expired. Nothing about the schedule or the status now changes when an early charge does not go through, and the reason is shown on the screen instead.
+* Fixed - A card update could restart a subscription the customer had cancelled. The link emailed to a payer is signed but it does not expire and can be used more than once, so an old one still worked later; completing it stored the new card and set the subscription back to active, undoing the cancellation, and the next renewal then charged the card the customer had cancelled to get away from. A cancelled subscription is now refused before any payment page opens.
+* Fixed - The CHIP Subscriptions screen offered Retry and Renew buttons to users whose press would always be refused, because the screen and the actions behind it asked for different permissions. The buttons now appear only for users who can use them, and a user who may only read the screen still gets the full list without controls they cannot use.
+* Changed - Releases now publish a downloadable plugin archive. The plugin is installed by upload rather than from the WordPress plugin directory, so a released version previously left you nothing to install.
 
 [See changelog for all versions](https://github.com/CHIPAsia/chip-for-formidable-forms/releases).
 
