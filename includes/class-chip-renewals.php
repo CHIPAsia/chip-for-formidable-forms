@@ -1345,6 +1345,18 @@ class FrmChipRenewals {
 			);
 		}
 
+		// A cancelled subscription takes no further payments, so replacing its
+		// card would have nothing to charge — and the link is not single-use, so
+		// an old one kept in an inbox would otherwise revive it: a new card is
+		// stored and the subscription is put back to active, silently undoing
+		// the cancellation the payer asked for. Refuse before any checkout opens.
+		if ( in_array( (string) $subscription->status, array( 'future_cancel', 'canceled' ), true ) ) {
+			return new WP_Error(
+				'chip_card_update_cancelled',
+				__( 'This subscription is cancelled, so there is nothing to charge.', 'chip-for-formidable-forms' )
+			);
+		}
+
 		return $subscription;
 	}
 
