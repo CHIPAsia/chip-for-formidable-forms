@@ -198,7 +198,19 @@ $frm_chip_status_labels = array(
 								?>
 							</td>
 							<td>
-								<?php if ( $frm_chip_row['can_retry'] ) { ?>
+								<?php
+								// Every control in this cell charges, cancels or revokes
+								// something, and each one is refused by the handler
+								// unless the user holds the management capability. The
+								// cell renders from the same predicate, so a button is
+								// never offered to someone the action behind it would
+								// refuse — and a user who may only look at this screen
+								// still sees it, with no controls they cannot use.
+								$frm_chip_can_manage = FrmChipSubscriptionsController::current_user_can_manage();
+								?>
+								<?php if ( ! $frm_chip_can_manage ) { ?>
+									&mdash;
+								<?php } elseif ( $frm_chip_row['can_retry'] ) { ?>
 									<?php
 									$frm_chip_retry_url = wp_nonce_url(
 										add_query_arg(

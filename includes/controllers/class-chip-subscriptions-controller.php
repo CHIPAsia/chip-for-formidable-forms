@@ -25,6 +25,38 @@ class FrmChipSubscriptionsController {
 	const PAGE_SLUG = 'formidable-chip-subscriptions';
 
 	/**
+	 * The capability that governs everything on the subscriptions screen.
+	 *
+	 * The page registers this for its menu, and every action reachable from it
+	 * checks the same one — the page renderer, the row actions and the retry
+	 * handler. One predicate instead of five spellings, so a control can never be
+	 * offered to somebody the action behind it would then refuse. That is what
+	 * happened when the page and its handlers named different capabilities: the
+	 * screen rendered for a role that could not press a single button on it.
+	 *
+	 * frm_change_settings is the one Formidable grants to the roles that run a
+	 * site's forms and payments, and it is what this plugin's own actions already
+	 * required. The page is a management screen, not a read-only report, so it
+	 * asks for the management capability rather than the view one.
+	 *
+	 * @var string
+	 */
+	const MANAGE_CAPABILITY = 'frm_change_settings';
+
+	/**
+	 * Whether the current user may manage CHIP subscriptions.
+	 *
+	 * The single decision point. FrmAppHelper::permission_check() also accepts a
+	 * user carrying 'administrator' and prints Formidable's own "you are not
+	 * allowed" message, so this stays consistent with the rest of the plugin.
+	 *
+	 * @return bool
+	 */
+	public static function current_user_can_manage() {
+		return current_user_can( self::MANAGE_CAPABILITY ) || current_user_can( 'administrator' );
+	}
+
+	/**
 	 * Whether the subscriptions screen is one of Formidable's "white pages".
 	 *
 	 * Formidable adds frm-white-body to the body class for the screens it styles
@@ -269,7 +301,7 @@ class FrmChipSubscriptionsController {
 		}
 
 		check_ajax_referer( 'frm_chip_retry_renewal', 'nonce' );
-		FrmAppHelper::permission_check( 'frm_change_settings' );
+		FrmAppHelper::permission_check( self::MANAGE_CAPABILITY );
 
 		// Which action was asked for. The button states it, but the server decides
 		// what each one is allowed to do rather than trusting the form: a request
@@ -490,6 +522,10 @@ class FrmChipSubscriptionsController {
 			'formidable',
 			__( 'CHIP Subscriptions', 'chip-for-formidable-forms' ),
 			__( 'CHIP Subscriptions', 'chip-for-formidable-forms' ),
+			// Core registers its own payments screen with this capability, and a
+			// role that may only look at subscriptions should keep doing so. It is
+			// the controls, not the page, that must disappear for a user who
+			// cannot act — see MANAGE_CAPABILITY.
 			'frm_view_entries',
 			self::PAGE_SLUG,
 			array( __CLASS__, 'render_page' )
@@ -526,7 +562,7 @@ class FrmChipSubscriptionsController {
 		}
 
 		check_admin_referer( 'frm_chip_' . $mode . '_' . $sub_id );
-		FrmAppHelper::permission_check( 'frm_change_settings' );
+		FrmAppHelper::permission_check( self::MANAGE_CAPABILITY );
 
 		$subscriptions = new FrmTransLiteSubscription();
 		$subscription  = $subscriptions->get_one( $sub_id );
