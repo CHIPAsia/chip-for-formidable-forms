@@ -266,7 +266,7 @@ class FrmChipRenewals {
 	 * @param stdClass $subscription Subscription row.
 	 * @return string charged|failed|skipped.
 	 */
-	public static function charge( $subscription ) {
+	public static function charge( $subscription, $early = false ) {
 		$api = FrmChipAppController::api();
 
 		if ( is_wp_error( $api ) ) {
@@ -302,7 +302,7 @@ class FrmChipRenewals {
 		}
 
 		try {
-			return self::charge_locked( $api, $subscription, $token, FrmChipSettings::get_settings() );
+			return self::charge_locked( $api, $subscription, $token, FrmChipSettings::get_settings(), $early );
 		} finally {
 			self::release_charge_lock( $subscription );
 		}
@@ -477,6 +477,11 @@ class FrmChipRenewals {
 	 * healthy subscription is a single deliberate decision. The subscription was
 	 * already charged successfully, so it is not burning a retry slot.
 	 *
+	 * A failed early charge changes nothing: the cycle was not due, so the payer
+	 * is not in arrears, and running the retry ladder would place a hold on a
+	 * healthy subscription and could expire it outright. The scheduled cycle is
+	 * left untouched and still runs.
+	 *
 	 * @param stdClass $subscription Subscription row.
 	 * @return string|WP_Error 'charged', 'failed', or the reason it was refused.
 	 */
@@ -505,7 +510,7 @@ class FrmChipRenewals {
 			);
 		}
 
-		return self::charge( $subscription );
+		return self::charge( $subscription, true );
 	}
 
 	/**
@@ -579,19 +584,19 @@ class FrmChipRenewals {
 	 * @param FrmChipSettings $settings     Plugin settings.
 	 * @return string charged|failed|skipped.
 	 */
-	private static function charge_locked( $api, $subscription, $token, $settings ) {
+	private static function charge_locked( $api, $subscription, $token, $settings, $early = false ) {
 		$amount = FrmChipHelper::to_minor_units( $subscription->amount );
 
 		$purchase = self::create_renewal_purchase( $api, $subscription, $amount, $settings );
 
 		if ( is_wp_error( $purchase ) ) {
-			return self::handle_charge_failure( $subscription, $purchase );
+			return self::handle_charge_failure( $subscription, $purchase, '', $early );
 		}
 
 		$charged = $api->charge_purchase( $purchase['id'], $token );
 
 		if ( is_wp_error( $charged ) ) {
-			return self::handle_charge_failure( $subscription, $charged, $purchase['id'] );
+			return self::handle_charge_failure( $subscription, $charged, $purchase['id'], $early );
 		}
 
 		// A charge can come back as pending_charge while the acquirer works; the
@@ -711,7 +716,7 @@ class FrmChipRenewals {
 	 * @param string   $purchase_id  Purchase ID when one was created.
 	 * @return string failed|skipped.
 	 */
-	private static function handle_charge_failure( $subscription, $error, $purchase_id = '' ) {
+	private static function handle_charge_failure( $subscription, $error, $purchase_id = '', $early = false ) {
 		$code = $error->get_error_code();
 		$data = $error->get_error_data();
 		$body = isset( $data['body'] ) ? $data['body'] : array();
@@ -725,6 +730,26 @@ class FrmChipRenewals {
 				'message' => $error->get_error_message(),
 			)
 		);
+
+		// An early charge is not a scheduled cycle that failed. The cycle is
+		// still ahead of the customer, so nothing is in arrears: advancing the
+		// retry ladder would place a hold on a subscription that was healthy a
+		// moment earlier, consume one of the four attempts it is owed for its
+		// real cycle, and running the ladder to its end would expire the
+		// subscription over a collection the customer never owed yet. Dunning
+		// the payer would be wrong for the same reason. Report it and change
+		// nothing — the scheduled cycle still runs.
+		if ( $early ) {
+			FrmChipHelper::log(
+				'Early charge failed, schedule untouched',
+				array(
+					'sub'  => $subscription->id,
+					'code' => $code,
+				)
+			);
+
+			return new WP_Error( 'chip_early_charge_failed', $error->get_error_message() );
+		}
 
 		// An outage is not a card problem: the charge was never attempted. Burning
 		// one of the four retry slots here would fail a healthy subscription after
